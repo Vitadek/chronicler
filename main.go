@@ -13,9 +13,8 @@ import (
 	"chronicle-server/pkg/collab"
 	"chronicle-server/pkg/config"
 	"chronicle-server/pkg/db"
+	"chronicle-server/pkg/plugins"
 	"chronicle-server/pkg/replica"
-
-	"github.com/webview/webview_go"
 )
 
 func main() {
@@ -66,6 +65,9 @@ func main() {
 	// Start replica manager background queue drain
 	repManager.Start()
 
+	// Seed plugins on first boot
+	_ = plugins.SeedPlugins(cfg.DataDir)
+
 	// Initialize AI service key validators and cache
 	api.InitAI(cfg)
 
@@ -100,24 +102,12 @@ func main() {
 		}
 	}
 
-	// Default to GUI mode if DISPLAY or WAYLAND_DISPLAY is set and --headless is not requested.
+	// Default to GUI mode if DISPLAY or WAYLAND_DISPLAY is set, --headless is not requested, and GUI is supported.
 	isGraphical := os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
-	runGuiMode := (isGraphical && !headless) || gui
+	runGuiMode := (isGraphical && !headless && guiSupported) || (gui && guiSupported)
 
 	if runGuiMode {
-		fmt.Printf("Launching Chronicle UI window...\n")
-		w := webview.New(false)
-		defer w.Destroy()
-		w.SetTitle("Chronicle Workstation")
-		w.SetSize(1200, 800, webview.HintNone)
-		w.Navigate(fmt.Sprintf("http://%s", addr))
-		w.Run()
-
-		// WebView window closed: shut down server
-		fmt.Println("[shutdown] UI window closed; stopping server")
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = server.Shutdown(ctx)
+		runGUI(server, addr)
 	} else {
 		// Headless Mode: block on signals
 		stop := make(chan os.Signal, 1)
