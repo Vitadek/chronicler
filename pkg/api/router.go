@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"chronicle-server/pkg/auth"
+	"chronicle-server/pkg/collab"
 	"chronicle-server/pkg/config"
 
 	"github.com/go-chi/chi/v5"
@@ -15,14 +16,16 @@ import (
 )
 
 type ServerRouter struct {
-	cfg      *config.Config
-	database *sql.DB
+	cfg       *config.Config
+	database  *sql.DB
+	collabHub *collab.Hub
 }
 
-func NewServerRouter(cfg *config.Config, database *sql.DB) *ServerRouter {
+func NewServerRouter(cfg *config.Config, database *sql.DB, collabHub *collab.Hub) *ServerRouter {
 	return &ServerRouter{
-		cfg:      cfg,
-		database: database,
+		cfg:       cfg,
+		database:  database,
+		collabHub: collabHub,
 	}
 }
 
@@ -33,6 +36,10 @@ func (sr *ServerRouter) Init() http.Handler {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(corsMiddleware)
+
+	// Collaboration WS dumb relay
+	r.Handle("/collab", sr.collabHub)
+	r.Handle("/collab/*", sr.collabHub)
 
 	// Health check (unauthenticated)
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -131,6 +138,22 @@ func (sr *ServerRouter) Init() http.Handler {
 			authGroup.Mount("/settings", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				subR := chi.NewRouter()
 				setH.Mount(subR)
+				subR.ServeHTTP(w, r)
+			}))
+
+			// AI Endpoints
+			aiH := NewAiHandler(sr.cfg, sr.database)
+			authGroup.Mount("/ai", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				subR := chi.NewRouter()
+				aiH.Mount(subR)
+				subR.ServeHTTP(w, r)
+			}))
+
+			// Covers Endpoints
+			coversH := NewCoversHandler(sr.cfg, sr.database)
+			authGroup.Mount("/covers", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				subR := chi.NewRouter()
+				coversH.Mount(subR)
 				subR.ServeHTTP(w, r)
 			}))
 		})

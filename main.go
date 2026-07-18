@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"chronicle-server/pkg/api"
+	"chronicle-server/pkg/collab"
 	"chronicle-server/pkg/config"
 	"chronicle-server/pkg/db"
 )
@@ -31,8 +32,15 @@ func main() {
 	// Start database garbage collection routine
 	db.StartGCLoop()
 
+	// Create collaboration WS dumb relay
+	collabHub := collab.NewHub(database, cfg)
+	defer collabHub.Close()
+
+	// Initialize AI service key validators and cache
+	api.InitAI(cfg)
+
 	// Create and initialize the central HTTP router
-	router := api.NewServerRouter(cfg, database)
+	router := api.NewServerRouter(cfg, database, collabHub)
 	handler := router.Init()
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
