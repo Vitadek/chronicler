@@ -156,6 +156,24 @@ func (sr *ServerRouter) Init() http.Handler {
 				coversH.Mount(subR)
 				subR.ServeHTTP(w, r)
 			}))
+
+			// Plugins Endpoints
+			pluginsH := NewPluginsHandler(sr.cfg, sr.database)
+			authGroup.Mount("/plugins", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				subR := chi.NewRouter()
+				pluginsH.Mount(subR)
+				subR.ServeHTTP(w, r)
+			}))
+
+			// Backup Endpoints (only enabled if LocalAdmin is true)
+			if sr.cfg.LocalAdmin {
+				backupH := NewBackupHandler(sr.cfg, sr.database)
+				authGroup.Mount("/backup", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					subR := chi.NewRouter()
+					backupH.Mount(subR)
+					subR.ServeHTTP(w, r)
+				}))
+			}
 		})
 
 		// 404 handler for unmatched /api routes

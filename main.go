@@ -22,6 +22,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Apply staged backup import swap if pending
+	db.ApplyPendingImport(cfg.DataDir)
+
 	database, err := db.InitDB(cfg.DataDir)
 	if err != nil {
 		fmt.Printf("Fatal database error: %v\n", err)
