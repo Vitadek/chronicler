@@ -100,7 +100,7 @@ func scopedCollabDocumentName(userId string, manuscriptId string, chapterId stri
 	return fmt.Sprintf("%s/%s:%s", url.QueryEscape(userId), manuscriptId, chapterId)
 }
 
-func purgeChapterCollaborationResidue(q replica.Queryable, userId string, manuscriptId string, chapterId string) {
+func PurgeChapterCollaborationResidue(q replica.Queryable, userId string, manuscriptId string, chapterId string) {
 	_, _ = q.Exec("DELETE FROM ydocs WHERE name = ?", scopedCollabDocumentName(userId, manuscriptId, chapterId))
 	_, _ = q.Exec("DELETE FROM ydocs WHERE name = ?", fmt.Sprintf("%s:%s", manuscriptId, chapterId))
 	_, _ = q.Exec(`
@@ -109,7 +109,7 @@ func purgeChapterCollaborationResidue(q replica.Queryable, userId string, manusc
 	`, userId, manuscriptId, chapterId)
 }
 
-func purgeManuscriptCollaborationResidue(q replica.Queryable, userId string, manuscriptId string) {
+func PurgeManuscriptCollaborationResidue(q replica.Queryable, userId string, manuscriptId string) {
 	scopedPrefix := fmt.Sprintf("%s/%s:", url.QueryEscape(userId), manuscriptId)
 	_, _ = q.Exec("DELETE FROM ydocs WHERE substr(name, 1, ?) = ?", len(scopedPrefix), scopedPrefix)
 
@@ -549,7 +549,7 @@ func DeleteChapter(database *sql.DB, userId string, manuscriptId string, chapter
 			UPDATE chapters SET title = NULL, content = NULL, position = NULL
 			WHERE user_id = ? AND manuscript_id = ? AND id = ?
 		`, userId, manuscriptId, chapterId)
-		purgeChapterCollaborationResidue(tx, userId, manuscriptId, chapterId)
+		PurgeChapterCollaborationResidue(tx, userId, manuscriptId, chapterId)
 
 		var parentRevision int
 		_ = tx.QueryRow("SELECT revision FROM manuscripts WHERE user_id = ? AND id = ?", userId, manuscriptId).Scan(&parentRevision)
@@ -575,7 +575,7 @@ func DeleteChapter(database *sql.DB, userId string, manuscriptId string, chapter
 		return false, 0, nil, 0, errUpdate
 	}
 
-	purgeChapterCollaborationResidue(tx, userId, manuscriptId, chapterId)
+	PurgeChapterCollaborationResidue(tx, userId, manuscriptId, chapterId)
 	_, _ = RecordChange(tx, userId, "chapter", &manuscriptId, chapterId, "delete", newRevision, now)
 
 	// Replica enqueue tombstone
@@ -621,7 +621,7 @@ func DeleteManuscript(database *sql.DB, userId string, id string, baseRevision *
 			UPDATE chapters SET title = NULL, content = NULL, position = NULL
 			WHERE user_id = ? AND manuscript_id = ? AND deleted_at IS NOT NULL
 		`, userId, id)
-		purgeManuscriptCollaborationResidue(tx, userId, id)
+		PurgeManuscriptCollaborationResidue(tx, userId, id)
 
 		tx.Commit()
 		return true, revision, revision, nil
@@ -643,7 +643,7 @@ func DeleteManuscript(database *sql.DB, userId string, id string, baseRevision *
 		return false, 0, 0, errUpdate
 	}
 
-	purgeManuscriptCollaborationResidue(tx, userId, id)
+	PurgeManuscriptCollaborationResidue(tx, userId, id)
 	_, _ = RecordChange(tx, userId, "manuscript", nil, id, "delete", newRevision, now)
 
 	// Replica enqueue tombstone

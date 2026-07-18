@@ -14,7 +14,8 @@ type PortableLiveManuscriptRecord struct {
 	ID            string                 `json:"id"`
 	Revision      int                    `json:"revision"`
 	LastModified  int64                  `json:"lastModified"`
-	Metadata      map[string]interface{} `json:"metadata"`
+	DeletedAt     int64                  `json:"deletedAt,omitempty"`
+	Metadata      map[string]interface{} `json:"metadata,omitempty"`
 }
 
 type PortableManuscriptTombstone struct {

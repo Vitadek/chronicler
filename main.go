@@ -13,6 +13,7 @@ import (
 	"chronicle-server/pkg/collab"
 	"chronicle-server/pkg/config"
 	"chronicle-server/pkg/db"
+	"chronicle-server/pkg/replica"
 )
 
 func main() {
@@ -32,6 +33,21 @@ func main() {
 	}
 	defer database.Close()
 
+	// Create replica manager
+	repManager, err := replica.NewManager(cfg, database)
+	if err != nil {
+		fmt.Printf("Fatal replica error: %v\n", err)
+		os.Exit(1)
+	}
+	defer repManager.Close()
+
+	// If a command line administrative subcommand is requested, execute it and exit
+	if len(os.Args) > 1 {
+		if replica.RunCLI(cfg, database, repManager, os.Args[1:]) {
+			return
+		}
+	}
+
 	// Start database garbage collection routine
 	db.StartGCLoop()
 
@@ -39,11 +55,20 @@ func main() {
 	collabHub := collab.NewHub(database, cfg)
 	defer collabHub.Close()
 
+	// Reconcile replica target on startup (seeds/cleans queue if configuration changed)
+	changed, seeded := repManager.ReconcileReplicaTarget()
+	if changed {
+		fmt.Printf("[replica] Target changed, seeded %d objects into manifest\n", seeded)
+	}
+
+	// Start replica manager background queue drain
+	repManager.Start()
+
 	// Initialize AI service key validators and cache
 	api.InitAI(cfg)
 
 	// Create and initialize the central HTTP router
-	router := api.NewServerRouter(cfg, database, collabHub)
+	router := api.NewServerRouter(cfg, database, collabHub, repManager)
 	handler := router.Init()
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)

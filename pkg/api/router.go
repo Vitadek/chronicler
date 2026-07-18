@@ -10,22 +10,25 @@ import (
 	"chronicle-server/pkg/auth"
 	"chronicle-server/pkg/collab"
 	"chronicle-server/pkg/config"
+	"chronicle-server/pkg/replica"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
 type ServerRouter struct {
-	cfg       *config.Config
-	database  *sql.DB
-	collabHub *collab.Hub
+	cfg            *config.Config
+	database       *sql.DB
+	collabHub      *collab.Hub
+	replicaManager *replica.Manager
 }
 
-func NewServerRouter(cfg *config.Config, database *sql.DB, collabHub *collab.Hub) *ServerRouter {
+func NewServerRouter(cfg *config.Config, database *sql.DB, collabHub *collab.Hub, replicaManager *replica.Manager) *ServerRouter {
 	return &ServerRouter{
-		cfg:       cfg,
-		database:  database,
-		collabHub: collabHub,
+		cfg:            cfg,
+		database:       database,
+		collabHub:      collabHub,
+		replicaManager: replicaManager,
 	}
 }
 
@@ -67,19 +70,25 @@ func (sr *ServerRouter) Init() http.Handler {
 			return
 		}
 
-		// Stub replica status for now (Phase 5 will implement full Nextcloud/S3 replica clients)
+		var repStatus interface{}
+		if sr.replicaManager != nil {
+			repStatus = sr.replicaManager.GetStatus()
+		} else {
+			repStatus = map[string]interface{}{
+				"provider":    "none",
+				"state":       "disabled",
+				"initialized": true,
+				"pending":     0,
+				"deadLetters": 0,
+			}
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"ready":    true,
 			"database": "ready",
-			"replica": map[string]interface{}{
-				"provider":    sr.cfg.Storage.Replica,
-				"state":       "healthy",
-				"initialized": true,
-				"pending":     0,
-				"deadLetters": 0,
-			},
-			"time": time.Now().UnixNano() / int64(time.Millisecond),
+			"replica":  repStatus,
+			"time":     time.Now().UnixNano() / int64(time.Millisecond),
 		})
 	})
 
