@@ -2,9 +2,12 @@ package api
 
 import (
 	"database/sql"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
+	"strings"
 	"time"
 
 	"chronicle-server/pkg/auth"
@@ -21,14 +24,16 @@ type ServerRouter struct {
 	database       *sql.DB
 	collabHub      *collab.Hub
 	replicaManager *replica.Manager
+	webFS          embed.FS
 }
 
-func NewServerRouter(cfg *config.Config, database *sql.DB, collabHub *collab.Hub, replicaManager *replica.Manager) *ServerRouter {
+func NewServerRouter(cfg *config.Config, database *sql.DB, collabHub *collab.Hub, replicaManager *replica.Manager, webFS embed.FS) *ServerRouter {
 	return &ServerRouter{
 		cfg:            cfg,
 		database:       database,
 		collabHub:      collabHub,
 		replicaManager: replicaManager,
+		webFS:          webFS,
 	}
 }
 
@@ -192,6 +197,24 @@ func (sr *ServerRouter) Init() http.Handler {
 			json.NewEncoder(w).Encode(map[string]string{"error": "API endpoint not found"})
 		})
 	})
+
+	// Serve static web interface assets (Fallback for SPA client-side routing)
+	subFS, err := fs.Sub(sr.webFS, "web")
+	if err == nil {
+		fileServer := http.FileServer(http.FS(subFS))
+		r.Get("/*", func(w http.ResponseWriter, req *http.Request) {
+			path := req.URL.Path
+			// Check if file exists in embed FS
+			if f, errOpen := subFS.Open(strings.TrimPrefix(path, "/")); errOpen == nil {
+				f.Close()
+				fileServer.ServeHTTP(w, req)
+				return
+			}
+			// Otherwise serve index.html (fallback for SPA client-side routing)
+			req.URL.Path = "/"
+			fileServer.ServeHTTP(w, req)
+		})
+	}
 
 	return r
 }

@@ -14,6 +14,8 @@ import (
 	"chronicle-server/pkg/config"
 	"chronicle-server/pkg/db"
 	"chronicle-server/pkg/replica"
+
+	"github.com/webview/webview_go"
 )
 
 func main() {
@@ -68,7 +70,7 @@ func main() {
 	api.InitAI(cfg)
 
 	// Create and initialize the central HTTP router
-	router := api.NewServerRouter(cfg, database, collabHub, repManager)
+	router := api.NewServerRouter(cfg, database, collabHub, repManager, WebFS)
 	handler := router.Init()
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
@@ -86,19 +88,49 @@ func main() {
 		}
 	}()
 
-	// Graceful shutdown listener
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	<-stop
+	// Determine GUI mode
+	headless := false
+	gui := false
+	for _, arg := range os.Args {
+		if arg == "--headless" {
+			headless = true
+		}
+		if arg == "--gui" {
+			gui = true
+		}
+	}
 
-	fmt.Println("\n[shutdown] signal received; closing Chronicle")
+	// Default to GUI mode if DISPLAY or WAYLAND_DISPLAY is set and --headless is not requested.
+	isGraphical := os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
+	runGuiMode := (isGraphical && !headless) || gui
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	if runGuiMode {
+		fmt.Printf("Launching Chronicle UI window...\n")
+		w := webview.New(false)
+		defer w.Destroy()
+		w.SetTitle("Chronicle Workstation")
+		w.SetSize(1200, 800, webview.HintNone)
+		w.Navigate(fmt.Sprintf("http://%s", addr))
+		w.Run()
 
-	if errShutdown := server.Shutdown(ctx); errShutdown != nil {
-		fmt.Printf("Graceful shutdown failed: %v\n", errShutdown)
-		os.Exit(1)
+		// WebView window closed: shut down server
+		fmt.Println("[shutdown] UI window closed; stopping server")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = server.Shutdown(ctx)
+	} else {
+		// Headless Mode: block on signals
+		stop := make(chan os.Signal, 1)
+		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+		<-stop
+
+		fmt.Println("\n[shutdown] signal received; closing Chronicle")
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if errShutdown := server.Shutdown(ctx); errShutdown != nil {
+			fmt.Printf("Graceful shutdown failed: %v\n", errShutdown)
+			os.Exit(1)
+		}
 	}
 
 	fmt.Println("Chronicle stopped successfully")
