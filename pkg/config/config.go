@@ -45,7 +45,6 @@ type Config struct {
 	AIUIEnabled  bool
 	AudioModel   string
 	AudioVoice   string
-	Grammar      GrammarConfig
 }
 
 type AuthConfig struct {
@@ -104,11 +103,6 @@ type S3Config struct {
 	AllowInsecureHttp    bool
 	ServerSideEncryption string
 	KmsKeyId             string
-}
-
-type GrammarConfig struct {
-	LanguagetoolUrl  string
-	LanguagetoolLang string
 }
 
 func envString(name string, fallback string) string {
@@ -254,10 +248,6 @@ func LoadConfig() (*Config, error) {
 		AIUIEnabled:  aiUiEnabled,
 		AudioModel:   envString("AUDIO_MODEL", "gpt-4o-mini-tts"),
 		AudioVoice:   envString("AUDIO_VOICE", "alloy"),
-		Grammar: GrammarConfig{
-			LanguagetoolUrl:  strings.TrimSuffix(envString("LANGUAGETOOL_URL", "http://languagetool:8010"), "/"),
-			LanguagetoolLang: envString("LANGUAGETOOL_LANG", "en-US"),
-		},
 	}
 
 	// Validate configuration at boot

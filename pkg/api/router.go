@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -168,6 +169,20 @@ func (sr *ServerRouter) Init() http.Handler {
 			authGroup.Mount("/covers", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				subR := chi.NewRouter()
 				coversH.Mount(subR)
+				subR.ServeHTTP(w, r)
+			}))
+
+			// Grammar Endpoints — the built-in prose checker that replaces the
+			// Node server's LanguageTool sidecar proxy. A load failure is
+			// logged, not fatal: the handler then returns 503 and the editor
+			// carries on without squiggles.
+			grammarH, grammarErr := NewGrammarHandler()
+			if grammarErr != nil {
+				log.Printf("[grammar] dictionary unavailable, checker disabled: %v", grammarErr)
+			}
+			authGroup.Mount("/grammar", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				subR := chi.NewRouter()
+				grammarH.Mount(subR)
 				subR.ServeHTTP(w, r)
 			}))
 
