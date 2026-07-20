@@ -137,7 +137,7 @@ and deep replica verification. The current release passed all 97 cases.
 ## Current release
 
 - Source tag: `release-20260720-core-lean`
-- Source commit: `eeaab28e28a2987a38040466f544c5f010091a01`
+- Source commit: `04c23501d6d8b50e99235ee159b0a4e36220de2e`
 - Accepted OCI digest:
   `sha256:b40df22c4ccffc047bd0cdfe7622038801f4becf17ce68cb79b5e53fc1f3014a`
 - Canonical mirrors:
