@@ -285,11 +285,17 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func roomNameFromPath(r *http.Request) string {
 	roomName := r.PathValue("room")
-	if roomName == "" {
-		roomName = strings.TrimPrefix(r.URL.Path, "/collab/")
-		roomName = strings.TrimPrefix(roomName, "/")
+	if roomName != "" {
+		return roomName
 	}
-	return roomName
+	// Hocuspocus connects to the collection endpoint and sends its document
+	// name in the first binary frame. Only legacy /collab/<room> URLs carry a
+	// path room that must agree with that frame.
+	const prefix = "/collab/"
+	if !strings.HasPrefix(r.URL.Path, prefix) {
+		return ""
+	}
+	return strings.TrimPrefix(r.URL.Path, prefix)
 }
 
 func (h *Hub) chapterExists(parsed *ScopedDocumentName) bool {
@@ -393,6 +399,7 @@ func (p *Peer) handleMessage(data []byte) bool {
 
 	switch outerType {
 	case msgSync, msgSyncReply:
+		syncType, _, inspectErr := ygsync.ReadSyncMessage(payload)
 		p.room.mu.Lock()
 		reply, err := ygsync.ApplySyncMessage(p.room.doc, payload, p)
 		if err == nil {
@@ -401,6 +408,7 @@ func (p *Peer) handleMessage(data []byte) bool {
 		}
 		p.room.mu.Unlock()
 		if err != nil {
+			log.Printf("[collab] failed to apply sync message for %q (type=%d inspect=%v): %v", docName, syncType, inspectErr, err)
 			return true
 		}
 		if reply != nil && outerType == msgSync {
