@@ -52,6 +52,8 @@ export interface ManuscriptMetadata {
 export interface Manuscript {
   metadata: ManuscriptMetadata;
   chapters: Chapter[];
+  /** Legacy Outline fields are retained in the document contract so loading and
+   * saving an older manuscript cannot silently discard data before a plugin migrates it. */
   characters?: Character[];
   plotNodes?: PlotNode[];
   plotEdges?: PlotEdge[];

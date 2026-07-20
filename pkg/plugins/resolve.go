@@ -9,7 +9,6 @@ import (
 var CoreCapabilities = []string{
 	"core:grammar",
 	"core:autocorrect",
-	"core:outliner",
 	"core:proofreader",
 }
 

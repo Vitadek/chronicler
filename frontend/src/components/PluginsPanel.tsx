@@ -12,7 +12,6 @@ import type { PluginContext } from '../plugins/api';
 const CORE_FEATURE_NAMES: Record<string, string> = {
   'core:grammar': 'Grammar Check',
   'core:autocorrect': 'Autocorrect',
-  'core:outliner': 'Outline pane',
   'core:proofreader': 'Proofread mode',
 };
 const coreFeatureName = (cap: string) => CORE_FEATURE_NAMES[cap] ?? cap;

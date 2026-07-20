@@ -11,7 +11,7 @@
  * repos you trust. (See PLUGINS.md.)
  *
  * A plugin declares what it CONTRIBUTES; the host renders/registers it. Every
- * feature — including proofreader, outliner, and checkers — is a first-class citizen using these same
+ * feature — including proofreader and checkers — is a first-class citizen using these same
  * slots.
  */
 import type React from 'react';
@@ -37,7 +37,6 @@ export type HostCapability = 'host:grammar' | 'host:languagetool';
 export type CoreCapability =
   | 'core:grammar'
   | 'core:autocorrect'
-  | 'core:outliner'
   | 'core:proofreader';
 
 /**
@@ -176,7 +175,7 @@ export type EditorExtensionsSlot = (ctx: PluginContext) => AnyExtension[];
 
 /**
  * A tab in the manuscript sidebar.
- * Unblocks sidebar panels such as the outliner.
+ * Unblocks editor-aware plugin contributions.
  */
 export interface SidebarTabContribution {
   id: string;

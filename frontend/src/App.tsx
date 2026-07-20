@@ -12,7 +12,7 @@ import { LazyMotion, m } from 'motion/react';
 // the eager entry chunk. domMax (not domAnimation) because LibraryView's
 // manuscript cards use layoutId shared-layout projection.
 const loadMotionFeatures = () => import('./lib/motionFeatures').then((mod) => mod.default);
-import { Chapter, ManuscriptMetadata, UserProfile, Manuscript, Character, PlotNode, PlotEdge, ExportSettings, DEFAULT_EXPORT_SETTINGS } from './types';
+import { Chapter, ManuscriptMetadata, UserProfile, Manuscript, ExportSettings, DEFAULT_EXPORT_SETTINGS } from './types';
 import { countWords } from './lib/wordCount';
 import { scheduleSettingsPush } from './lib/settingsSync';
 import {
@@ -232,16 +232,7 @@ function AppInner() {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [currentChapterId, setCurrentChapterId] = useState<string>('');
 
-  // Outline-pane state: characters, plot nodes, plot edges.
-  // Persisted per-manuscript in localStorage for now — proper sync support
-  // is a follow-up. Keyed by manuscript id so switching books shows the
-  // right set.
-  const [characters, setCharacters] = useState<Character[]>([]);
-  const [plotNodes, setPlotNodes] = useState<PlotNode[]>([]);
-  const [plotEdges, setPlotEdges] = useState<PlotEdge[]>([]);
-
-  // Live editor instance for the open chapter. CommentsPanel walks this
-  // doc to extract marks; we receive it via a callback from EditorView.
+  // Live editor instance for the open chapter, published to plugin contexts.
   const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
 
   // Global settings visibility
@@ -260,9 +251,6 @@ function AppInner() {
     setMetadata(null);
     setChapters([]);
     setCurrentChapterId('');
-    setCharacters([]);
-    setPlotNodes([]);
-    setPlotEdges([]);
     setActiveEditor(null);
   }, []);
 
@@ -304,7 +292,6 @@ function AppInner() {
   const grammarCheckActive = isGrammarCheckEnabled && coreOn('core:grammar');
   const autoCorrectActive = isAutoCorrectEnabled && coreOn('core:autocorrect');
   const proofreadActive = coreOn('core:proofreader');
-  const outlinerActive = coreOn('core:outliner');
 
   // Keep the plugin host's view of the app current. The host sits above this component so plugins survive
   // navigation; this is how it sees our live state.
@@ -552,21 +539,6 @@ function AppInner() {
     };
     void load();
 
-    // Hydrate outline-pane state from localStorage. (Sync schema for these
-    // entities is a follow-up; for now they're device-local.)
-    try {
-      const c = localStorage.getItem(`chronicle_chars_${manuscriptId}`);
-      setCharacters(c ? JSON.parse(c) : []);
-    } catch { setCharacters([]); }
-    try {
-      const n = localStorage.getItem(`chronicle_plotnodes_${manuscriptId}`);
-      setPlotNodes(n ? JSON.parse(n) : []);
-    } catch { setPlotNodes([]); }
-    try {
-      const e = localStorage.getItem(`chronicle_plotedges_${manuscriptId}`);
-      setPlotEdges(e ? JSON.parse(e) : []);
-    } catch { setPlotEdges([]); }
-
     // NOTE: deliberately not depending on remoteRevision. Reloading the
     // currently-open manuscript on every sync tick would clobber in-progress
     // edits the user hasn't auto-saved yet. The library view does react to
@@ -621,126 +593,6 @@ function AppInner() {
   useEffect(() => {
     localStorage.setItem('chronicle_export_settings', JSON.stringify(exportSettings));
   }, [exportSettings]);
-
-  // Outline-pane persistence. Stored per-manuscript so each book has its
-  // own cast and plot graph. Only write when a manuscript is open so we
-  // don't accidentally clobber another book's state with empty arrays.
-  //
-  // Debounced (A15 in frontend_optimizations.md): every keystroke in a
-  // CharacterSheet textarea or PlotCanvas node input used to synchronously
-  // stringify the whole array and hit localStorage on that same render. A
-  // trailing 500ms timer coalesces bursts of typing into one write. A single
-  // stable beforeunload listener (registered once, via refs, below) flushes
-  // the latest values on tab close so a write mid-debounce isn't lost.
-  const outlinePersistRef = useRef({ characters, plotNodes, plotEdges, currentManuscriptId });
-  outlinePersistRef.current = { characters, plotNodes, plotEdges, currentManuscriptId };
-
-  useEffect(() => {
-    if (!currentManuscriptId) return;
-    const id = currentManuscriptId;
-    const t = setTimeout(() => {
-      localStorage.setItem(`chronicle_chars_${id}`, JSON.stringify(characters));
-    }, 500);
-    return () => clearTimeout(t);
-  }, [characters, currentManuscriptId]);
-
-  useEffect(() => {
-    if (!currentManuscriptId) return;
-    const id = currentManuscriptId;
-    const t = setTimeout(() => {
-      localStorage.setItem(`chronicle_plotnodes_${id}`, JSON.stringify(plotNodes));
-    }, 500);
-    return () => clearTimeout(t);
-  }, [plotNodes, currentManuscriptId]);
-
-  useEffect(() => {
-    if (!currentManuscriptId) return;
-    const id = currentManuscriptId;
-    const t = setTimeout(() => {
-      localStorage.setItem(`chronicle_plotedges_${id}`, JSON.stringify(plotEdges));
-    }, 500);
-    return () => clearTimeout(t);
-  }, [plotEdges, currentManuscriptId]);
-
-  useEffect(() => {
-    const flush = () => {
-      const latest = outlinePersistRef.current;
-      if (!latest.currentManuscriptId) return;
-      const id = latest.currentManuscriptId;
-      localStorage.setItem(`chronicle_chars_${id}`, JSON.stringify(latest.characters));
-      localStorage.setItem(`chronicle_plotnodes_${id}`, JSON.stringify(latest.plotNodes));
-      localStorage.setItem(`chronicle_plotedges_${id}`, JSON.stringify(latest.plotEdges));
-    };
-    window.addEventListener('beforeunload', flush);
-    return () => window.removeEventListener('beforeunload', flush);
-  }, []);
-
-  // CRUD callbacks. Each generates a fresh id, timestamps the change, and
-  // updates the array. Updates use object merge for partial patches.
-  const handleAddCharacter = useCallback(() => {
-    const id = `char_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const palette = ['#5B8DEF', '#E07A5F', '#8AA47B', '#C8A2C8', '#F4A261', '#2A9D8F', '#E9C46A', '#9C6644', '#577590', '#D5896F'];
-    setCharacters((prev) => [...prev, {
-      id,
-      name: '',
-      lastModified: Date.now(),
-      color: palette[prev.length % palette.length],
-    }]);
-  }, []);
-
-  const handleUpdateCharacter = useCallback((id: string, patch: Partial<Character>) => {
-    setCharacters((prev) => prev.map((c) => c.id === id ? { ...c, ...patch, lastModified: Date.now() } : c));
-  }, []);
-
-  const handleDeleteCharacter = useCallback((id: string) => {
-    setCharacters((prev) => prev.filter((c) => c.id !== id));
-    // Cascade: remove character from any plot nodes that referenced them.
-    setPlotNodes((prev) => prev.map((n) =>
-      n.characterIds?.includes(id)
-        ? { ...n, characterIds: n.characterIds.filter((x) => x !== id), lastModified: Date.now() }
-        : n,
-    ));
-  }, []);
-
-  const handleAddPlotNode = useCallback((kind: 'event' | 'comment') => {
-    const id = `node_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    setPlotNodes((prev) => [...prev, {
-      id,
-      type: kind,
-      title: '',
-      // Stagger new nodes diagonally so they don't pile up on top of each other.
-      x: 40 + (prev.length % 8) * 30,
-      y: 40 + (prev.length % 8) * 30,
-      lastModified: Date.now(),
-    }]);
-  }, []);
-
-  const handleUpdatePlotNode = useCallback((id: string, patch: Partial<PlotNode>) => {
-    setPlotNodes((prev) => prev.map((n) => n.id === id ? { ...n, ...patch, lastModified: Date.now() } : n));
-  }, []);
-
-  const handleDeletePlotNode = useCallback((id: string) => {
-    setPlotNodes((prev) => prev.filter((n) => n.id !== id));
-    // Cascade: drop any edges that touched this node.
-    setPlotEdges((prev) => prev.filter((e) => e.from !== id && e.to !== id));
-  }, []);
-
-  const handleAddPlotEdge = useCallback((from: string, to: string) => {
-    if (from === to) return;
-    setPlotEdges((prev) => {
-      // De-dupe: skip if the same edge already exists.
-      if (prev.some((e) => e.from === from && e.to === to)) return prev;
-      return [...prev, {
-        id: `edge_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        from, to,
-        lastModified: Date.now(),
-      }];
-    });
-  }, []);
-
-  const handleDeletePlotEdge = useCallback((id: string) => {
-    setPlotEdges((prev) => prev.filter((e) => e.id !== id));
-  }, []);
 
   useEffect(() => {
     localStorage.setItem('chronicle_theme', isDarkMode ? 'dark' : 'light');
@@ -833,10 +685,6 @@ function AppInner() {
     ));
     setMetadata(prev => prev ? ({ ...prev, lastModified: Date.now() }) : null);
   }, [currentChapterId]);
-
-  const handleUpdateSynopsis = useCallback((synopsis: string) => {
-    setMetadata(prev => prev ? ({ ...prev, synopsis, lastModified: Date.now() }) : null);
-  }, []);
 
   const handleAddChapter = useCallback(() => {
     const newChapter: Chapter = {
@@ -1078,12 +926,6 @@ function AppInner() {
           touchControlsMode={touchControlsMode}
           onChangeTouchControls={setTouchControlsMode}
           metadata={metadata}
-          onUpdateSynopsis={handleUpdateSynopsis}
-          /* A2 (frontend_optimizations.md): gate this to the empty string while
-             closed so Sidebar's extractHeadings pass hits its empty-string
-             early return instead of DOMParsing the whole chapter on every
-             keystroke for a panel that isn't visible. */
-          currentChapterContent={isSidebarOpen ? currentChapter.content : ''}
           isAutocompleteEnabled={isAutocompleteEnabled}
           onToggleAutocomplete={() => setIsAutocompleteEnabled(!isAutocompleteEnabled)}
           isGrammarCheckEnabled={isGrammarCheckEnabled}
@@ -1097,18 +939,6 @@ function AppInner() {
           onReturnToLibrary={() => { void leaveManuscript(); }}
           manuscriptWordCount={totalWordCount}
           exportSettings={exportSettings}
-          editor={activeEditor}
-          characters={characters}
-          plotNodes={plotNodes}
-          plotEdges={plotEdges}
-          onAddCharacter={handleAddCharacter}
-          onUpdateCharacter={handleUpdateCharacter}
-          onDeleteCharacter={handleDeleteCharacter}
-          onAddPlotNode={handleAddPlotNode}
-          onUpdatePlotNode={handleUpdatePlotNode}
-          onDeletePlotNode={handleDeletePlotNode}
-          onAddPlotEdge={handleAddPlotEdge}
-          onDeletePlotEdge={handleDeletePlotEdge}
         />
         
         <main className="flex-1">

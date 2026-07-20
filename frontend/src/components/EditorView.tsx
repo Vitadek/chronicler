@@ -566,7 +566,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
               title fields. Sized to feel like a book cover, with a soft
               shadow. Falls back to nothing when no cover is uploaded. */}
           {isTitlePage && titleCoverUrl && (
-            <div className="mb-16 flex justify-center" data-outline="cover">
+            <div className="mb-16 flex justify-center">
               <img
                 src={titleCoverUrl}
                 alt="Manuscript cover"
@@ -574,7 +574,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
               />
             </div>
           )}
-          <div data-outline="title">
+          <div>
             <EditorContent 
               editor={titleEditor} 
               className="w-full"
@@ -589,7 +589,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
           {isTitlePage && (
             <div className="my-12 opacity-20 font-serif italic text-xl text-center">by</div>
           )}
-          <div data-outline="content">
+          <div>
             {collabEnabled ? (
               <Suspense fallback={<div className="min-h-[500px] opacity-40">Connecting collaborative editor…</div>}>
                 <CollabEditor

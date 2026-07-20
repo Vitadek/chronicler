@@ -7,6 +7,11 @@ const removed = [
   'src/components/AiSettingsPanel.tsx',
   'src/components/IssuesPane.tsx',
   'src/components/SmartThesaurus.tsx',
+  'src/components/OutlinePane.tsx',
+  'src/components/CharacterSheet.tsx',
+  'src/components/PlotCanvas.tsx',
+  'src/components/CommentsPanel.tsx',
+  'src/components/PopoutWindow.tsx',
   'src/lib/AiGrammar.ts',
   'src/lib/TenseShift.ts',
   'src/lib/tense/detect.ts',
@@ -27,5 +32,18 @@ assert.doesNotMatch(toolbar, /thesaurus|gemini|\/api\/ai/i);
 const pluginApi = readFileSync(resolve(root, 'src/plugins/api/index.ts'), 'utf8');
 assert.match(pluginApi, /PLUGIN_API_VERSION = 4/);
 assert.doesNotMatch(pluginApi, /host:ai|host:gemini|services\.ai/);
+assert.doesNotMatch(pluginApi, /core:outliner/);
+
+const sidebar = readFileSync(resolve(root, 'src/components/Sidebar.tsx'), 'utf8');
+assert.doesNotMatch(sidebar, />\s*Outline\s*</);
+assert.doesNotMatch(sidebar, /view === ['"]outline['"]|OutlinePane|core:outliner/);
+
+const app = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
+assert.doesNotMatch(app, /core:outliner|chronicle_(?:chars|plotnodes|plotedges)_/);
+
+const types = readFileSync(resolve(root, 'src/types.ts'), 'utf8');
+for (const legacyField of ['characters?:', 'plotNodes?:', 'plotEdges?:']) {
+  assert.ok(types.includes(legacyField), `${legacyField} remains readable for legacy documents`);
+}
 
 console.log('Core removal contract and formatting-only toolbar verified.');

@@ -24,7 +24,8 @@ import { authFetch } from '../services/authService';
  * The preference keys that sync. Deliberately excluded:
  *  - chronicle_token / chronicle_oidc_* — auth material, never leaves the device
  *  - obsolete feature preferences — retained in storage but ignored
- *  - chronicle_chars_/plotnodes_/plotedges_* — per-manuscript data,
+ *  - chronicle_chars_/plotnodes_/plotedges_* — legacy per-manuscript Outline
+ *    data retained untouched for a future plugin migration,
  *    persisted through the manuscript store
  *  - chronicle_sync_* / chronicle_migrated_v* — machine-local cursors
  */

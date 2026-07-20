@@ -1,5 +1,5 @@
-import React, { useState, useRef, useMemo, useEffect, useDeferredValue } from 'react';
-import { Book, Plus, MoreVertical, Menu, X, Trash2, Settings, ChevronLeft, Moon, Sun, Cloud, Layout, Copy, GripVertical, FileText, List, Search, Upload, Check, Download, Briefcase, User, Info, Library, AlignLeft, Smartphone, SpellCheck, CaseSensitive } from 'lucide-react';
+import React, { useState, useRef, useMemo } from 'react';
+import { Book, Plus, MoreVertical, Menu, X, Trash2, Settings, ChevronLeft, Moon, Sun, Cloud, Layout, Copy, GripVertical, FileText, Search, Upload, Check, Download, Briefcase, User, Info, Library, AlignLeft, Smartphone, SpellCheck, CaseSensitive } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { Chapter, ManuscriptMetadata, UserProfile, ExportSettings, DEFAULT_EXPORT_SETTINGS } from '../types';
@@ -8,14 +8,11 @@ import { Chapter, ManuscriptMetadata, UserProfile, ExportSettings, DEFAULT_EXPOR
 // visitor downloads before typing a word. Vite splits them into async chunks
 // fetched on the first export click.
 import { MarkdownExportDialog } from './MarkdownExportDialog';
-import { useCoreFeature, usePluginHost, usePluginSlot } from '../plugins/host/PluginHost';
+import { usePluginHost, usePluginSlot } from '../plugins/host/PluginHost';
 import { PluginBoundary } from '../plugins/host/PluginBoundary';
 import { countWords, readingMinutes, formatWordCount } from '../lib/wordCount';
 import { CoverArtUpload } from './CoverArtUpload';
 import { ChapterMenu } from './ChapterMenu';
-import { OutlinePane } from './OutlinePane';
-import type { Editor } from '@tiptap/react';
-import type { Character, PlotNode, PlotEdge } from '../types';
 import {
   DndContext,
   closestCenter,
@@ -65,7 +62,6 @@ interface SidebarProps {
   onUpdateMetadata: (metadata: Partial<ManuscriptMetadata>) => void;
   userProfile: UserProfile;
   onUpdateUserProfile: (profile: Partial<UserProfile>) => void;
-  currentChapterContent?: string;
   /** Cached by App so Sidebar does not re-count every chapter on each keystroke. */
   manuscriptWordCount?: number;
   /** Permanently delete the current manuscript. Parent navigates back to the library. */
@@ -74,23 +70,6 @@ interface SidebarProps {
   onReturnToLibrary?: () => void;
   /** Per-format export preferences (HTML theme, Hugo front matter, EPUB cover/rights). */
   exportSettings?: ExportSettings;
-  onUpdateSynopsis?: (text: string) => void;
-  /** Live TipTap editor instance for the open chapter; used by the Comments panel
-   *  to walk the doc and apply mark edits in-place. */
-  editor?: Editor | null;
-  /** Outline data: characters and plot graph. Owned by App.tsx so it
-   *  persists per-manuscript and survives sidebar opens/closes. */
-  characters?: Character[];
-  plotNodes?: PlotNode[];
-  plotEdges?: PlotEdge[];
-  onAddCharacter?: () => void;
-  onUpdateCharacter?: (id: string, patch: Partial<Character>) => void;
-  onDeleteCharacter?: (id: string) => void;
-  onAddPlotNode?: (kind: 'event' | 'comment') => void;
-  onUpdatePlotNode?: (id: string, patch: Partial<PlotNode>) => void;
-  onDeletePlotNode?: (id: string) => void;
-  onAddPlotEdge?: (from: string, to: string) => void;
-  onDeletePlotEdge?: (id: string) => void;
   className?: string;
 }
 
@@ -285,72 +264,6 @@ const ReplaceableToggle: React.FC<{
   );
 };
 
-// Stable empty-array identity (J2 in frontend_optimizations.md) — avoids a
-// fresh [] defeating memoization downstream in consumers of `headings`.
-const EMPTY_HEADINGS: Array<{ id: string; text: string; level: number }> = [];
-const EMPTY_CHARACTERS: Character[] = [];
-const EMPTY_PLOT_NODES: PlotNode[] = [];
-const EMPTY_PLOT_EDGES: PlotEdge[] = [];
-
-// Stable no-op fallbacks for OutlinePane's (non-optional) handler props when
-// Sidebar's own (optional) callback props are absent — module-scope so their
-// identity never changes, unlike the previous per-render `() => x?.()` wraps
-// (J2 in frontend_optimizations.md).
-const NOOP_0 = () => {};
-const NOOP_1 = (_a: string) => {};
-const NOOP_1_KIND = (_kind: 'event' | 'comment') => {};
-const NOOP_2 = (_a: string, _b: unknown) => {};
-const NOOP_2_STR = (_a: string, _b: string) => {};
-
-// Hoisted to module scope (A3 in frontend_optimizations.md) — captures
-// nothing, so there's no reason to redefine it on every Sidebar render.
-function extractHeadings(title: string, html: string) {
-  const list = [{ id: 'heading-title', text: title, level: 1 }];
-  if (!html) return list;
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
-
-  // We walk all top-level children to find headings AND scene breaks
-  const items: Array<{ id: string; text: string; level: number }> = [...list];
-  const children = Array.from(doc.body.children);
-
-  children.forEach((child, i) => {
-    const tag = child.tagName.toLowerCase();
-
-    // 1. Handle standard headings
-    if (['h1', 'h2', 'h3'].includes(tag)) {
-      items.push({
-        id: `heading-content-${i}`,
-        text: child.textContent || '',
-        level: parseInt(tag.substring(1)),
-      });
-    }
-
-    // 2. Handle scene breaks
-    // Detect common break patterns (***, ---, ___) or <hr> tags
-    const text = child.textContent?.trim() || '';
-    // Support patterns with optional spaces: * * *, - - -, _ _ _
-    const isBreakText = /^((\*\s*){3,}|(-\s*){3,}|(_\s*){3,})$/.test(text);
-    const isHr = tag === 'hr';
-
-    if (isHr || (tag === 'p' && isBreakText)) {
-      // Look at the NEXT child for the label
-      const nextChild = children[i + 1];
-      const nextText = nextChild?.textContent?.trim() || '';
-      // Get the first sentence or first 40 chars
-      const firstSentence = nextText.split(/[.!?]/)[0].substring(0, 40);
-
-      items.push({
-        id: `scene-content-${i}`,
-        text: `Scene: ${firstSentence}${firstSentence ? '...' : '(End of block)'}`,
-        level: 4, // Custom level for scene breaks (indented further)
-      });
-    }
-  });
-
-  return items;
-}
-
 export const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
   onToggle,
@@ -381,40 +294,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onUpdateMetadata,
   userProfile,
   onUpdateUserProfile,
-  currentChapterContent,
   manuscriptWordCount,
   onDeleteManuscript,
   onReturnToLibrary,
   exportSettings = DEFAULT_EXPORT_SETTINGS,
-  onUpdateSynopsis,
-  editor,
-  characters,
-  plotNodes,
-  plotEdges,
-  onAddCharacter,
-  onUpdateCharacter,
-  onDeleteCharacter,
-  onAddPlotNode,
-  onUpdatePlotNode,
-  onDeletePlotNode,
-  onAddPlotEdge,
-  onDeletePlotEdge,
   className 
 }) => {
-  const [view, setView] = useState<'chapters' | 'outline' | 'settings' | 'export' | 'profile' | string>('chapters');
+  const [view, setView] = useState<'chapters' | 'settings' | 'export' | 'profile' | string>('chapters');
 
   // Sidebar tabs contributed by plugins.
   const pluginTabs = usePluginSlot('sidebarTabs');
   const { makeContext, reportError } = usePluginHost();
-
-  // Core stands down when a plugin replaces the outliner.
-  const outlineActive = useCoreFeature('core:outliner');
-
-  // If the active tab is switched off (by the user's toggle, or by a plugin
-  // taking the feature over), fall back to the chapter list.
-  useEffect(() => {
-    if (!outlineActive && view === 'outline') setView('chapters');
-  }, [outlineActive, view]);
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState<'docx' | 'md' | 'html' | 'epub' | null>(null);
@@ -563,19 +453,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  const currentChapter = chapters.find(c => c.id === currentChapterId);
-  // A2/A3 (frontend_optimizations.md): this used to run unconditionally in
-  // the render body — a DOMParser pass over the ENTIRE chapter HTML on every
-  // keystroke, even with the sidebar closed or on a different tab, since the
-  // isOpen/view gates only wrapped the JSX, not this computation. Gate it to
-  // when it's actually visible (Outline tab, open), and use
-  // useDeferredValue so a large chapter's parse doesn't compete with the
-  // urgent keystroke render when it does run.
-  const deferredChapterContent = useDeferredValue(currentChapterContent);
-  const headings = useMemo(() => {
-    if (!isOpen || view !== 'outline' || !currentChapter) return EMPTY_HEADINGS;
-    return extractHeadings(currentChapter.title, deferredChapterContent || '');
-  }, [isOpen, view, currentChapter, deferredChapterContent]);
   const fonts = [
     { name: 'Inter', family: 'Inter' },
     { name: 'Verdana', family: 'Verdana' },
@@ -583,32 +460,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { name: 'Montserrat', family: 'Montserrat' },
     { name: 'Literata', family: 'Literata' }
   ];
-
-  const handleHeadingClick = (text: string, level: number) => {
-    if (level === 1 && text === currentChapter?.title) {
-      const titleEl = document.querySelector('[data-outline="title"]');
-      titleEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } else {
-      const editorEl = document.querySelector('[data-outline="content"]');
-      if (editorEl) {
-        // For Level 4 (Scenes), we look for <hr> or matching paragraph patterns
-        if (level === 4) {
-          const blocks = Array.from(editorEl.querySelectorAll('p, hr'));
-          const target = blocks.find(el => {
-            if (el.tagName.toLowerCase() === 'hr') return true;
-            const pText = el.textContent?.trim() || '';
-            return /^((\*\s*){3,}|(-\s*){3,}|(_\s*){3,})$/.test(pText);
-          });
-          target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          return;
-        }
-
-        const hTags = Array.from(editorEl.querySelectorAll('h1, h2, h3'));
-        const target = hTags.find(h => h.textContent?.trim() === text.trim());
-        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }
-  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -665,17 +516,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="mb-12 flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-2 px-2">
-                  {view === 'outline' ? (
-                    <List className={cn("w-3.5 h-3.5", isDarkMode ? "text-white/20" : "text-black/20")} />
-                  ) : (
-                    <Book className={cn("w-3.5 h-3.5", isDarkMode ? "text-white/20" : "text-black/20")} />
-                  )}
+                  <Book className={cn("w-3.5 h-3.5", isDarkMode ? "text-white/20" : "text-black/20")} />
                   <span className={cn("text-[10px] uppercase tracking-[0.2em] font-bold", isDarkMode ? "text-white/60" : "text-black/60")}>
-                    {view === 'outline' ? 'Structure' : 'Manuscript'}
+                    Manuscript
                   </span>
                 </div>
                 <h1 className={cn("text-xl sm:text-2xl font-literata font-semibold normal-case px-2 truncate", isDarkMode ? "text-white" : "text-black")}>
-                  {view === 'outline' ? (chapters.find(c => c.id === currentChapterId)?.title || 'Untitled Chapter') : (metadata.title || 'Untitled Manuscript')}
+                  {metadata.title || 'Untitled Manuscript'}
                 </h1>
               </div>
               <div className="flex items-center gap-0.5 shrink-0">
@@ -722,19 +569,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <Book className="w-3 h-3" />
                 Draft
               </button>
-              {outlineActive && (
-                <button
-                  onClick={() => setView('outline')}
-                  className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
-                    view === 'outline' ? (isDarkMode ? "bg-white/10 text-white" : "bg-white text-black shadow-sm") : "opacity-40",
-                    currentChapterId === 'title-page' && "pointer-events-none opacity-10"
-                  )}
-                >
-                  <List className="w-3 h-3" />
-                  Outline
-                </button>
-              )}
               {/* Plugin-contributed tabs */}
               {pluginTabs.map(({ pluginId, item }) => {
                 const key = `plugin:${pluginId}:${item.id}`;
@@ -838,37 +672,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       Add Chapter
                     </button>
                   </div>
-                </motion.div>
-              ) : view === 'outline' ? (
-                <motion.div 
-                  key="outline"
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.98 }}
-                  className="flex flex-col flex-1 min-h-0 overflow-hidden"
-                >
-                  <OutlinePane
-                    isDarkMode={isDarkMode}
-                    editor={editor || null}
-                    synopsis={metadata.synopsis}
-                    onUpdateSynopsis={(text) => onUpdateSynopsis?.(text)}
-                    headings={headings}
-                    onHeadingClick={handleHeadingClick}
-                    characters={characters ?? EMPTY_CHARACTERS}
-                    plotNodes={plotNodes ?? EMPTY_PLOT_NODES}
-                    plotEdges={plotEdges ?? EMPTY_PLOT_EDGES}
-                    onAddCharacter={onAddCharacter ?? NOOP_0}
-                    onUpdateCharacter={onUpdateCharacter ?? NOOP_2}
-                    onDeleteCharacter={onDeleteCharacter ?? NOOP_1}
-                    onAddPlotNode={onAddPlotNode ?? NOOP_1_KIND}
-                    onUpdatePlotNode={onUpdatePlotNode ?? NOOP_2}
-                    onDeletePlotNode={onDeletePlotNode ?? NOOP_1}
-                    onAddPlotEdge={onAddPlotEdge ?? NOOP_2_STR}
-                    onDeletePlotEdge={onDeletePlotEdge ?? NOOP_1}
-                    chapters={chapters}
-                    currentChapterId={currentChapterId}
-                    onSelectChapter={onSelectChapter}
-                  />
                 </motion.div>
               ) : view.startsWith('plugin:') ? (
                 <motion.div

@@ -22,6 +22,14 @@ func TestEmptyResolutionCollectionsEncodeAsArrays(t *testing.T) {
 	}
 }
 
+func TestRemovedOutlinerIsNotAdvertisedByCore(t *testing.T) {
+	for _, capability := range CoreCapabilities {
+		if capability == "core:outliner" {
+			t.Fatal("removed core outliner capability is still advertised")
+		}
+	}
+}
+
 func TestManifestAndDiskPluginCollectionsEncodeAsArrays(t *testing.T) {
 	dir := t.TempDir()
 	pluginDir := filepath.Join(dir, "chronicle.proofreader")
