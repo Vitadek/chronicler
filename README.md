@@ -148,7 +148,7 @@ CHRONICLE_IMAGE=chronicler:local ./tests/formal/run.sh
 
 It covers fail-closed configuration, manuscript and settings isolation, sync,
 collaboration, S3 outage/recovery, backup, restart durability, offline restore,
-and deep replica verification. The current release passed all 97 cases.
+and deep replica verification. The current candidate passed all 98 cases.
 
 ## Current release
 
