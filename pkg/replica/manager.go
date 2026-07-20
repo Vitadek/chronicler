@@ -860,7 +860,7 @@ func (m *Manager) Verify(ctx context.Context, prefix string) (*ReplicaVerificati
 			}
 		}
 
-		var finalUnexpected []string
+		finalUnexpected := make([]string, 0, len(unexpectedSet))
 		for k := range unexpectedSet {
 			finalUnexpected = append(finalUnexpected, k)
 		}
