@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math/rand"
 	"net/url"
 	"sort"
@@ -296,6 +297,7 @@ func (m *Manager) syncJob(ctx context.Context, job *outboxJob) error {
 
 	nextAttemptAt := attemptedAt + backoffMs(attempts)
 	errStr := syncErr.Error()
+	log.Printf("[replica] %s generation %d failed (attempt %d/%d): %v", job.Key, job.Generation, attempts, m.cfg.Storage.MaxAttempts, syncErr)
 
 	_, _ = m.db.Exec(`
 		UPDATE storage_replication_outbox SET
