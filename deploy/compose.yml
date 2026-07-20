@@ -1,0 +1,37 @@
+name: chronicle-go
+
+services:
+  chronicle:
+    image: forgejo.lan/protoman/chronicle-go:latest
+    pull_policy: always
+    restart: unless-stopped
+    ports:
+      - "${CHRONICLE_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATA_DIR: /data
+      AUTH_MODE: token
+      AUTH_TOKEN: ${CHRONICLE_TOKEN:?set CHRONICLE_TOKEN in .env}
+      STORAGE_REPLICA: ${STORAGE_REPLICA:-none}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_PREFIX: ${S3_PREFIX:-chronicle}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
+      S3_ALLOW_INSECURE_HTTP: ${S3_ALLOW_INSECURE_HTTP:-false}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+    volumes:
+      - chronicle-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 2s
+    stop_grace_period: 15s
+
+volumes:
+  chronicle-data:
