@@ -9,7 +9,8 @@
 // before — only the sqlite binding and the host container differ.
 //
 // node:sqlite is Node 22's built-in binding; its prepare/get/all/close surface
-// matches better-sqlite3 closely enough that the queries below are untouched.
+// matches better-sqlite3 closely. PRAGMA queries still use prepare/get because
+// DatabaseSync deliberately does not expose better-sqlite3's pragma helper.
 import { DatabaseSync } from 'node:sqlite';
 
 const BACKUP_PATH = process.env.BACKUP_PATH;
@@ -75,7 +76,7 @@ const outbox = db.prepare(`
 `).all();
 const result = {
   backupPath: process.env.BACKUP_PATH,
-  integrity: db.pragma('integrity_check')[0].integrity_check,
+  integrity: one('PRAGMA integrity_check').integrity_check,
   epoch: one("SELECT v FROM kv WHERE k = 'sync:history-epoch:v2'").v,
   authoritativeRevisions,
   settings: JSON.parse(Buffer.from(settingsRow.content).toString('utf8')),
