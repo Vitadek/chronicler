@@ -236,14 +236,14 @@ export function GlobalSettings({
             <div className="flex items-start gap-3 p-4 rounded-2xl bg-black/5 dark:bg-white/5">
               <Shield className="w-4 h-4 opacity-20 shrink-0 mt-0.5" />
               <p className="text-[10px] leading-relaxed opacity-40 italic">
-                Settings sync to your Chronicle server, so they survive updates and follow you across devices. API keys stay local to this device. Profile information can be synced to your title pages during export.
+                Settings sync to your Chronicler server, so they survive updates and follow you across devices. API keys stay local to this device. Profile information can be synced to your title pages during export.
               </p>
             </div>
           </section>
         </div>
 
         <div className="py-10 mt-6 border-t border-black/12 dark:border-white/15 text-center">
-          <p className="text-[10px] opacity-20 uppercase tracking-widest font-bold">Chronicle Global Config</p>
+          <p className="text-[10px] opacity-20 uppercase tracking-widest font-bold">Chronicler Global Config</p>
         </div>
       </div>
     </motion.div>

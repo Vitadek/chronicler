@@ -1,9 +1,9 @@
 {
-  "name": "chronicle-frontend",
+  "name": "chronicler-frontend",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Chronicle's React frontend. Built into ../web, which the Go server embeds via //go:embed.",
+  "description": "Chronicler's React frontend. Built into ../web, which the Go server embeds via //go:embed.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

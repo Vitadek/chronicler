@@ -76,7 +76,7 @@ export function useChronicleEditor({
     attributes: {
       class: className,
       // Shared keyboard-control attributes (see lib/editorExtensions.ts):
-      // make Chronicle's Typography the single source of smart punctuation
+      // make Chronicler's Typography the single source of smart punctuation
       // and stop the OS keyboard from injecting a stray space after quotes.
       ...EDITOR_KEYBOARD_ATTRS,
     },

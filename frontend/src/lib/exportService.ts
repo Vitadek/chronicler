@@ -455,7 +455,7 @@ export async function exportToManuscriptDocx(
   }));
 
   const doc = new Document({
-    creator: author || 'Chronicle',
+    creator: author || 'Chronicler',
     title: isSingle && chapters[0] ? stripHtml(chapters[0].title) : title,
     description: isSingle ? 'Single-chapter export' : 'Standard Manuscript Format export',
     styles: {

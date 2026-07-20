@@ -16,7 +16,7 @@ interface State {
  * Contains a misbehaving plugin. In v1 anything a plugin threw during render
  * took the whole app down with it (no boundary anywhere); now the plugin's own
  * UI disappears, the error is reported to the host (surfaced in Settings), and
- * Chronicle keeps running.
+ * Chronicler keeps running.
  */
 export class PluginBoundary extends React.Component<Props, State> {
   state: State = { failed: false };

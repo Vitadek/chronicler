@@ -3,13 +3,13 @@ import { Chapter, Manuscript } from '../types';
 /**
  * Manuscript import — the inverse of the exporters in exportService.ts.
  *
- * Accepts every format Chronicle exports except EPUB:
+ * Accepts every format Chronicler exports except EPUB:
  *   .docx        — Word documents (via mammoth). Heading 1/2/3 start chapters.
- *   .md          — Markdown, including Chronicle's own export shape (YAML
+ *   .md          — Markdown, including Chronicler's own export shape (YAML
  *                  front matter, `# Title` / `By Author` header, `##` chapters).
- *   .html/.htm   — Chronicle HTML exports round-trip exactly; generic HTML
+ *   .html/.htm   — Chronicler HTML exports round-trip exactly; generic HTML
  *                  falls back to heading-based splitting.
- *   .zip         — a zip of .md files (Chronicle's multi-chapter Markdown
+ *   .zip         — a zip of .md files (Chronicler's multi-chapter Markdown
  *                  export); each file becomes a chapter, in filename order.
  *
  * Every step appends to a log the import dialog shows, so a surprising result
@@ -144,7 +144,7 @@ interface FrontMatter {
   raw: Record<string, string>;
 }
 
-/** Parse the simple `key: value` YAML front matter Chronicle exports emit. */
+/** Parse the simple `key: value` YAML front matter Chronicler exports emit. */
 function parseFrontMatter(text: string): { fm: FrontMatter | null; rest: string } {
   const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   if (!m) return { fm: null, rest: text };
@@ -161,7 +161,7 @@ function parseFrontMatter(text: string): { fm: FrontMatter | null; rest: string 
   };
 }
 
-/** Convert a block of Chronicle-flavoured Markdown body text to editor HTML. */
+/** Convert a block of Chronicler-flavoured Markdown body text to editor HTML. */
 function markdownBlocksToHtml(mdBody: string): string {
   const inline = (s: string) =>
     escapeHtml(s)
@@ -184,7 +184,7 @@ function markdownBlocksToHtml(mdBody: string): string {
 }
 
 /**
- * Import a Markdown document. Handles both Chronicle export shapes:
+ * Import a Markdown document. Handles both Chronicler export shapes:
  *  - book export: front matter + `# Title` + `By Author` + `##` per chapter
  *  - single-chapter export: front matter + one `#` heading (the chapter)
  * Plain third-party Markdown works with the same rules.
@@ -290,10 +290,10 @@ function importMarkdownText(text: string, filename: string, log: ImportLogEntry[
 function importHtmlText(text: string, filename: string, log: ImportLogEntry[]): Manuscript {
   const doc = new DOMParser().parseFromString(text, 'text/html');
 
-  // Chronicle's own HTML export: exact round-trip via its structure.
+  // Chronicler's own HTML export: exact round-trip via its structure.
   const sections = Array.from(doc.querySelectorAll('section.chapter'));
   if (sections.length > 0) {
-    log.push({ level: 'info', message: `Recognized a Chronicle HTML export (${sections.length} chapter section(s)).` });
+    log.push({ level: 'info', message: `Recognized a Chronicler HTML export (${sections.length} chapter section(s)).` });
     const title =
       doc.querySelector('header.title-page h1')?.textContent?.trim() ||
       doc.querySelector('title')?.textContent?.trim() ||
@@ -377,7 +377,7 @@ async function importMarkdownZip(file: File, log: ImportLogEntry[]): Promise<Man
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
   if (entries.length === 0) {
-    throw new ImportError('The zip contains no .md files. Expected Chronicle\'s multi-chapter Markdown export (one .md per chapter).', log);
+    throw new ImportError('The zip contains no .md files. Expected Chronicler\'s multi-chapter Markdown export (one .md per chapter).', log);
   }
   log.push({ level: 'info', message: `Found ${entries.length} Markdown file(s) in the zip; importing in filename order.` });
 
@@ -431,7 +431,7 @@ export async function importManuscriptFile(file: File): Promise<ImportOutcome> {
     } else if (ext === 'epub') {
       throw new ImportError('EPUB import isn\'t supported — EPUB export is one-way. Import the .docx, Markdown, or HTML version instead.', log);
     } else {
-      throw new ImportError(`Unsupported file type ".${ext}". Chronicle imports .docx, .md, .html, and .zip (of Markdown).`, log);
+      throw new ImportError(`Unsupported file type ".${ext}". Chronicler imports .docx, .md, .html, and .zip (of Markdown).`, log);
     }
 
     const words = manuscript.chapters.reduce((n, c) => n + (c.content.replace(/<[^>]*>/g, ' ').trim().split(/\s+/).filter(Boolean).length), 0);

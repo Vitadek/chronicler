@@ -1231,7 +1231,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                   <div className="py-8 mt-auto border-t border-black/12 dark:border-white/15">
                     <p className="text-[10px] opacity-20 text-center uppercase tracking-widest font-bold">
-                      Chronicle v0.1.0
+                      Chronicler v0.1.0
                     </p>
                   </div>
                 </motion.div>

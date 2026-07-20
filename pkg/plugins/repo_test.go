@@ -27,7 +27,7 @@ func commitTestFile(t *testing.T, repoDir, contents string) {
 		t.Fatal(err)
 	}
 	if _, err := worktree.Commit("test update", &git.CommitOptions{Author: &object.Signature{
-		Name: "Chronicle Test", Email: "test@chronicle.invalid", When: time.Unix(1, 0),
+		Name: "Chronicler Test", Email: "test@chronicle.invalid", When: time.Unix(1, 0),
 	}}); err != nil {
 		t.Fatal(err)
 	}

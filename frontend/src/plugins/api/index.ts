@@ -1,5 +1,5 @@
 /**
- * @chronicle/plugin-api — the contract every Chronicle plugin implements.
+ * @chronicle/plugin-api — the contract every Chronicler plugin implements.
  *
  * A plugin is a git repo the server clones and compiles (esbuild → CJS with the
  * app's own react / @tiptap / motion left external). At runtime the host

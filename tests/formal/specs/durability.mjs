@@ -11,10 +11,10 @@ function portable(userId, suffix) {
 
 export async function run() {
   await runSuite('formal-restart-durability', async (test) => {
-    test('Chronicle returns to healthy readiness after container restart', async () => {
+    test('Chronicler returns to healthy readiness after container restart', async () => {
       const ready = await waitReady(
         (body) => body.replica?.state === 'healthy' && body.replica.pending === 0,
-        'restarted Chronicle readiness',
+        'restarted Chronicler readiness',
       );
       assert.equal(ready.replica.deadLetters, 0);
       aliceId = (await userIdentity('alice')).id;
@@ -70,7 +70,7 @@ export async function run() {
       }
     });
 
-    test('S3 portable record remains available after Chronicle restart', async () => {
+    test('S3 portable record remains available after Chronicler restart', async () => {
       const object = await waitObject(portable(aliceId, 'manuscripts/formal_outage/metadata.json'));
       assert.equal(JSON.parse(object.bytes.toString('utf8')).metadata.title, 'Written during outage');
     });

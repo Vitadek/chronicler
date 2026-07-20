@@ -13,7 +13,7 @@ import type { Doc as YDoc } from 'yjs';
 /**
  * Keyboard-control attributes applied to the editor's contenteditable.
  *
- * Chronicle's Typography extension is the SINGLE source of smart punctuation
+ * Chronicler's Typography extension is the SINGLE source of smart punctuation
  * (curly quotes, em dashes, ellipses). Letting the OS keyboard also
  * autocorrect/auto-punctuate fights those input rules and drops a stray space
  * after quotes on mobile. We turn the keyboard's active text rewriting off,
@@ -64,7 +64,7 @@ export interface CoreExtensionOptions {
 }
 
 /**
- * The prose core shared by every Chronicle editor surface: StarterKit, smart
+ * The prose core shared by every Chronicler editor surface: StarterKit, smart
  * typography, underline, placeholder, word counting, and the inline marks
  * (epigraph / comment / audio).
  *

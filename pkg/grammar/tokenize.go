@@ -94,7 +94,7 @@ func isWordRune(r rune) bool {
 	return unicode.IsLetter(r) || isConnector(r)
 }
 
-// isConnector covers both the ASCII apostrophe and U+2019, which Chronicle's
+// isConnector covers both the ASCII apostrophe and U+2019, which Chronicler's
 // Typography extension substitutes in as the user types.
 func isConnector(r rune) bool {
 	return r == '\'' || r == '’' || r == '-'

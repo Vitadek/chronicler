@@ -58,7 +58,7 @@ function chapterMetadata(bytes) {
 
 export async function run() {
   await runSuite('formal-offline-restore', async (test) => {
-    test('Chronicle restarts healthy with the same forward identity', async () => {
+    test('Chronicler restarts healthy with the same forward identity', async () => {
       baseline = JSON.parse(await fs.readFile('/artifacts/restore-baseline.json', 'utf8'));
       const ready = await waitReady((body) => body.ready && body.database === 'ready');
       assert.equal(ready.replica.provider, 's3');

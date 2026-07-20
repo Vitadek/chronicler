@@ -25,7 +25,7 @@ import { authFetch } from '../services/authService';
  *  - chronicle_token / chronicle_oidc_* — auth material, never leaves the device
  *  - obsolete feature preferences (including chronicle_autocomplete,
  *    chronicle_autocorrect, and chronicle_grammar_check) — retained in storage
- *    and in existing server snapshots but ignored; Chronicle never
+ *    and in existing server snapshots but ignored; Chronicler never
  *    destructively rewrites them
  *  - chronicle_chars_/plotnodes_/plotedges_* — legacy per-manuscript Outline
  *    data retained untouched for a future plugin migration,

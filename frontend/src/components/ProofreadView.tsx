@@ -369,7 +369,7 @@ function ProofreadChapter({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const lintedRef = useRef(false);
 
-  // Proofreading owns its checker explicitly. The general Chronicle editor no
+  // Proofreading owns its checker explicitly. The general Chronicler editor no
   // longer bundles or runs live grammar checking; this lazy proofread surface
   // retains the existing non-AI checker and highlight extension.
   const proofreadExtensions = useMemo(() => [
@@ -879,7 +879,7 @@ function DictionaryDrawer({ isOpen, onClose, isDarkMode, dictVersion, onChanged 
             </div>
 
             <p className="text-[10px] leading-relaxed opacity-40 mb-4">
-              Words here are never flagged as misspellings — anywhere in Chronicle.
+              Words here are never flagged as misspellings — anywhere in Chronicler.
               Perfect for character names and worldbuilding terms. Synced to your server.
             </p>
 

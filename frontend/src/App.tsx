@@ -435,7 +435,7 @@ function AppInner() {
 
   const reloadServerVersion = useCallback(() => {
     const confirmed = window.confirm(
-      'Reload the authoritative server version? Chronicle will first keep your current local edits as a separate recovery copy, and will not overwrite the server with them.',
+      'Reload the authoritative server version? Chronicler will first keep your current local edits as a separate recovery copy, and will not overwrite the server with them.',
     );
     if (confirmed) autosave.reloadServerVersion();
   }, [autosave.reloadServerVersion]);
@@ -460,8 +460,8 @@ function AppInner() {
       const recoveryConfirmed = autosave.hasRecoveryDraft();
       const leaveAnyway = window.confirm(
         recoveryConfirmed
-          ? 'Chronicle could not sync your latest changes. The exact current version is preserved in the local draft journal. Leave this manuscript anyway?'
-          : 'Chronicle could not sync your latest changes and could not confirm a recovery copy. Leaving now may lose them. Leave this manuscript anyway?',
+          ? 'Chronicler could not sync your latest changes. The exact current version is preserved in the local draft journal. Leave this manuscript anyway?'
+          : 'Chronicler could not sync your latest changes and could not confirm a recovery copy. Leaving now may lose them. Leave this manuscript anyway?',
       );
       if (!leaveAnyway) return;
     }
@@ -488,7 +488,7 @@ function AppInner() {
           if (draftFingerprint === baseline) {
             clearManuscriptDraft(manuscriptId);
           } else if (window.confirm(
-            'Chronicle found changes from an interrupted or failed save. Restore the local draft?',
+            'Chronicler found changes from an interrupted or failed save. Restore the local draft?',
           )) {
             manuscript = draft.manuscript;
           } else {
@@ -713,7 +713,7 @@ function AppInner() {
       // Finish it before DELETE so it cannot recreate the row afterward.
       const flushed = await autosave.flush();
       if (!flushed) {
-        alert('Chronicle could not save the manuscript, so the chapter was not deleted. Retry after the save issue is resolved.');
+        alert('Chronicler could not save the manuscript, so the chapter was not deleted. Retry after the save issue is resolved.');
         return;
       }
       if (openSessionRef.current?.key !== session.key) return;

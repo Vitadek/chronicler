@@ -305,8 +305,8 @@ export function useManuscriptAutosave({
             setError(
               cause instanceof ManuscriptServiceError && cause.authoritativeManuscript
                 ? hasRecovery
-                  ? `${cause.message}. Reload the server version to resolve it; Chronicle will preserve your local edits as a separate recovery copy first.`
-                  : `${cause.message}. Browser draft storage is unavailable; keep this tab open. Reload remains blocked unless Chronicle can first preserve your local edits.`
+                  ? `${cause.message}. Reload the server version to resolve it; Chronicler will preserve your local edits as a separate recovery copy first.`
+                  : `${cause.message}. Browser draft storage is unavailable; keep this tab open. Reload remains blocked unless Chronicler can first preserve your local edits.`
                 : `${cause instanceof Error ? cause.message : 'Save conflict'}. Keep this tab open and reopen the manuscript to load the server version.`,
             );
           } else {
@@ -522,7 +522,7 @@ export function useManuscriptAutosave({
     if (!writeManuscriptConflictDraft(conflict.manuscriptId, local.manuscript)) {
       setStatus('conflict');
       setError(
-        'The server version was not loaded because Chronicle could not preserve your local edits. Keep this tab open and free browser storage before retrying.',
+        'The server version was not loaded because Chronicler could not preserve your local edits. Keep this tab open and free browser storage before retrying.',
       );
       return false;
     }

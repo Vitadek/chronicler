@@ -401,7 +401,7 @@ export async function run() {
       await expectStatus('/api/manuscripts/formal_outage', 404, { user: alice });
     });
 
-    test('all divergent jobs dead-letter before Chronicle is stopped', async () => {
+    test('all divergent jobs dead-letter before Chronicler is stopped', async () => {
       const ready = await waitReady(
         (body) => body.replica?.state === 'degraded' &&
           body.replica.pending === 7 && body.replica.deadLetters === 7,

@@ -14,10 +14,10 @@ import (
 const guiSupported = true
 
 func runGUI(server *http.Server, addr string) {
-	fmt.Printf("Launching Chronicle UI window...\n")
+	fmt.Printf("Launching Chronicler UI window...\n")
 	w := webview.New(false)
 	defer w.Destroy()
-	w.SetTitle("Chronicle Workstation")
+	w.SetTitle("Chronicler Workstation")
 	w.SetSize(1200, 800, webview.HintNone)
 	w.Navigate(fmt.Sprintf("http://%s", addr))
 	w.Run()

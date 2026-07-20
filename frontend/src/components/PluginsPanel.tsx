@@ -210,7 +210,7 @@ const PluginsPanelImpl: React.FC<{ isDarkMode: boolean }> = ({ isDarkMode }) => 
           </button>
         </div>
         <p className="text-[10px] leading-relaxed opacity-40 italic">
-          Chronicle clones the repo and compiles it on the server — plugin authors need no build tooling.
+          Chronicler clones the repo and compiles it on the server — plugin authors need no build tooling.
           Plugins run with full access to the app, so only install repos you trust.
         </p>
         {installError && (

@@ -1,5 +1,5 @@
 // Client side of the grammar checker. The engine is now self-hosted
-// LanguageTool living behind the Chronicle server (/api/grammar/check), so the
+// LanguageTool living behind the Chronicler server (/api/grammar/check), so the
 // client just POSTs text and gets hits back — no WASM, no worker, nothing to
 // download to the device.
 //

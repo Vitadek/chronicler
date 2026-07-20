@@ -47,7 +47,7 @@ export async function userIdentity(user) {
   return result.data;
 }
 
-export async function waitReady(predicate = (body) => body.ready, label = 'Chronicle readiness') {
+export async function waitReady(predicate = (body) => body.ready, label = 'Chronicler readiness') {
   return eventually(async () => {
     const result = await request('/readyz');
     if (result.status !== 200 || !result.data || !predicate(result.data)) return false;

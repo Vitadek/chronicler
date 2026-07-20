@@ -74,7 +74,7 @@ function defaultCoverSvg(title: string, author: string): string {
   <text x="800" y="1300" text-anchor="middle" fill="#c9b896"
         font-family="Georgia, serif" font-size="64" font-style="italic">by ${a}</text>
   <text x="800" y="2200" text-anchor="middle" fill="#9a8d75"
-        font-family="Georgia, serif" font-size="36" letter-spacing="12">CHRONICLE</text>
+        font-family="Georgia, serif" font-size="36" letter-spacing="12">CHRONICLER</text>
 </svg>`;
 }
 
@@ -283,7 +283,7 @@ blockquote[data-type="epigraph"] { text-align: center; margin: 2em 3em; }`;
 function isoFromTitle(title: string): string {
   // Crude but unique enough for a personal export.
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  return `urn:chronicle:${slug || 'untitled'}:${Date.now()}`;
+  return `urn:chronicler:${slug || 'untitled'}:${Date.now()}`;
 }
 
 function stripHtmlMinimal(s: string): string {

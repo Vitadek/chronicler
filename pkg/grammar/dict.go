@@ -12,7 +12,7 @@ import (
 )
 
 // The dictionary and frequency list are compiled into the binary so a
-// Chronicle server has a working spell checker with nothing installed and no
+// Chronicler server has a working spell checker with nothing installed and no
 // network. See assets/dict/LICENSE.txt for provenance and terms.
 
 //go:embed assets/en_US.aff
@@ -35,7 +35,7 @@ var frequencyBytes []byte
 type Dictionary struct {
 	// spellers are consulted in order; a word known to ANY of them is correct.
 	//
-	// Both US and GB are loaded because Chronicle must not impose a dialect on
+	// Both US and GB are loaded because Chronicler must not impose a dialect on
 	// a novelist. With US alone, "grey", "colour", "realise", "theatre" and
 	// every -ise/-our/-re form squiggle red — a false-positive class that
 	// showed up immediately on ordinary prose. Loading the GB dictionary

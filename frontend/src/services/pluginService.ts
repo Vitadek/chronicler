@@ -73,7 +73,7 @@ export interface PluginState {
 }
 
 /**
- * Older Chronicle servers and early Go builds encoded empty slices as `null`.
+ * Older Chronicler servers and early Go builds encoded empty slices as `null`.
  * Keep this boundary tolerant so opening Settings cannot crash while rendering
  * dependency badges for an already-installed plugin. All consumers receive the
  * current contract (`[]` for every collection), regardless of server vintage.

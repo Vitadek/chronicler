@@ -136,8 +136,8 @@ export async function evaluatePluginModule(pluginId: string, code: string): Prom
   }
   if (exported.apiVersion !== PLUGIN_API_VERSION) {
     throw new Error(
-      `Plugin targets API v${exported.apiVersion}, this Chronicle provides v${PLUGIN_API_VERSION}. ` +
-      `Update the plugin (or Chronicle).`,
+      `Plugin targets API v${exported.apiVersion}, this Chronicler provides v${PLUGIN_API_VERSION}. ` +
+      `Update the plugin (or Chronicler).`,
     );
   }
   return exported;

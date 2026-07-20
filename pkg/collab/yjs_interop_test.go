@@ -25,7 +25,7 @@ func TestRoomNameFromPath(t *testing.T) {
 	}
 }
 
-// Generated with yjs 13.6.27, the exact version used by Chronicle's frontend
+// Generated with yjs 13.6.27, the exact version used by Chronicler's frontend
 // and formal collaboration client. This protects the Go CRDT boundary against
 // silently accepting a frame without integrating its shared types.
 func TestYjsMapUpdateInteroperability(t *testing.T) {

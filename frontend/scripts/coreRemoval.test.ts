@@ -65,6 +65,24 @@ assert.doesNotMatch(editorHook, /Autocomplete|AutoCorrect|setGrammarCheck|isGram
 const editorExtensions = readFileSync(resolve(root, 'src/lib/editorExtensions.ts'), 'utf8');
 assert.doesNotMatch(editorExtensions, /import \{ AutoCorrect \}|\bAutoCorrect,|Autocomplete ghost/);
 
+for (const path of [
+  'index.html',
+  'public/manifest.webmanifest',
+  'src/components/AuthGate.tsx',
+  'src/components/GlobalSettings.tsx',
+  'src/components/Sidebar.tsx',
+  'src/lib/epubExport.ts',
+  'src/lib/exportService.ts',
+]) {
+  const source = readFileSync(resolve(root, path), 'utf8');
+  assert.doesNotMatch(source, /\bChronicle\b/, `${path} must use Chronicler branding`);
+}
+const globalSettings = readFileSync(resolve(root, 'src/components/GlobalSettings.tsx'), 'utf8');
+assert.match(globalSettings, />Chronicler Global Config</);
+const manifest = JSON.parse(readFileSync(resolve(root, 'public/manifest.webmanifest'), 'utf8'));
+assert.equal(manifest.name, 'Chronicler');
+assert.equal(manifest.short_name, 'Chronicler');
+
 const types = readFileSync(resolve(root, 'src/types.ts'), 'utf8');
 for (const legacyField of ['characters?:', 'plotNodes?:', 'plotEdges?:']) {
   assert.ok(types.includes(legacyField), `${legacyField} remains readable for legacy documents`);

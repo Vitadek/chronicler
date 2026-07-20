@@ -305,7 +305,7 @@ func PullRepo(pluginsDir string, id string) error {
 }
 
 func hardResetPreservingMeta(w *git.Worktree, dir string, commit plumbing.Hash, meta RepoMeta) error {
-	// go-git's hard reset removes the untracked Chronicle metadata file, so
+	// go-git's hard reset removes the untracked Chronicler metadata file, so
 	// restore it or the next update will treat this git install as local.
 	if err := w.Reset(&git.ResetOptions{
 		Commit: commit,

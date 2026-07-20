@@ -25,7 +25,7 @@ wait_for_chronicle_health() {
   local container status
   container=$(compose ps --quiet chronicle)
   if [ -z "$container" ]; then
-    echo "Chronicle container is not running" >&2
+    echo "Chronicler container is not running" >&2
     return 1
   fi
   for _ in $(seq 1 90); do
@@ -39,7 +39,7 @@ wait_for_chronicle_health() {
     fi
     sleep 1
   done
-  echo "Chronicle did not become healthy" >&2
+  echo "Chronicler did not become healthy" >&2
   compose logs --no-color chronicle >&2
   return 1
 }
@@ -69,7 +69,7 @@ if ! docker image inspect "$CHRONICLE_IMAGE" >/dev/null 2>&1; then
   docker pull "$CHRONICLE_IMAGE"
 fi
 
-docker image inspect --format 'Testing Chronicle image {{.Id}} ({{join .RepoTags ", "}})' "$CHRONICLE_IMAGE" \
+docker image inspect --format 'Testing Chronicler image {{.Id}} ({{join .RepoTags ", "}})' "$CHRONICLE_IMAGE" \
   | tee "$ARTIFACTS/image-under-test.txt"
 
 REPORT_DIR="$ARTIFACTS" node "$FORMAL_DIR/orchestrator/preflight.mjs" \
@@ -135,7 +135,7 @@ alice_id=$(node -e \
 # is a dead letter. Stop the sole SQLite writer before reconnecting the remote.
 compose stop --timeout 15 chronicle
 if [ -n "$(compose ps --status running --quiet chronicle)" ]; then
-  echo "Chronicle must be stopped before restore apply" >&2
+  echo "Chronicler must be stopped before restore apply" >&2
   exit 1
 fi
 
@@ -189,7 +189,7 @@ compose run --rm --no-deps runner node orchestrator/assert-restore-artifacts.mjs
   | tee "$ARTIFACTS/automatic-backup-assertion.txt"
 
 if [ -n "$(compose ps --status running --quiet chronicle)" ]; then
-  echo "Canonical Chronicle unexpectedly started during offline restore" >&2
+  echo "Canonical Chronicler unexpectedly started during offline restore" >&2
   exit 1
 fi
 compose start chronicle
@@ -203,4 +203,4 @@ compose exec -T chronicle $CHRONICLE_CLI verify \
 compose run --rm --no-deps runner node orchestrator/assert-restore-artifacts.mjs verify \
   | tee "$ARTIFACTS/verify-after-offline-restore-assertion.txt"
 
-echo "Formal Chronicle suite passed. Artifacts: $ARTIFACTS"
+echo "Formal Chronicler suite passed. Artifacts: $ARTIFACTS"

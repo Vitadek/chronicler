@@ -158,7 +158,7 @@ export async function run() {
     });
 
     test('Unicode manuscript and chapters are created with server revisions', async () => {
-      const input = manuscript('formal_unicode', '海辺の Chronicle — 🖋️', [
+      const input = manuscript('formal_unicode', '海辺の Chronicler — 🖋️', [
         { id: 'alpha', title: 'Café α', content: '<p>naïve 東京 🌊 — secret prose</p>' },
         { id: 'beta', title: 'مرحبا', content: '<p>Здравствуй мир</p>' },
       ]);

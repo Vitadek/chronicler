@@ -79,7 +79,7 @@ func main() {
 	}
 
 	go func() {
-		fmt.Printf("Chronicle server listening on http://%s\n", addr)
+		fmt.Printf("Chronicler server listening on http://%s\n", addr)
 		fmt.Printf("  data dir: %s\n", cfg.DataDir)
 		fmt.Printf("  auth mode: %s\n", cfg.Auth.Mode)
 		if errServe := server.ListenAndServe(); errServe != nil && errServe != http.ErrServerClosed {
@@ -111,7 +111,7 @@ func main() {
 		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 		<-stop
 
-		fmt.Println("\n[shutdown] signal received; closing Chronicle")
+		fmt.Println("\n[shutdown] signal received; closing Chronicler")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if errShutdown := server.Shutdown(ctx); errShutdown != nil {
@@ -120,5 +120,5 @@ func main() {
 		}
 	}
 
-	fmt.Println("Chronicle stopped successfully")
+	fmt.Println("Chronicler stopped successfully")
 }

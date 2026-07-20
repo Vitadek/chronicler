@@ -1,7 +1,7 @@
-# Chronicle formal black-box suite
+# Chronicler formal black-box suite
 
-This suite treats the Chronicle OCI image as the product boundary. The app
-container receives only a named `/data` volume: Chronicle source is never bind
+This suite treats the Chronicler OCI image as the product boundary. The app
+container receives only a named `/data` volume: Chronicler source is never bind
 mounted into it. The default candidate is
 `forgejo.lan/protoman/chronicle:core-candidate-20260713-r5`; select another exact
 candidate with `CHRONICLE_IMAGE`.
@@ -14,7 +14,7 @@ CHRONICLE_IMAGE=forgejo.lan/protoman/chronicle:ci-<commit> npm run test:formal
 ```
 
 The harness creates and later removes its own Compose volumes. Do not point it
-at a real Chronicle database or bucket. Docker Engine with Compose v2 is the
+at a real Chronicler database or bucket. Docker Engine with Compose v2 is the
 only host prerequisite. The first run may pull the digest-pinned Node 22,
 MinIO, MinIO Client, and Toxiproxy images.
 
@@ -35,7 +35,7 @@ MinIO, MinIO Client, and Toxiproxy images.
 - collaboration handshake authorization, document scoping, two-client Yjs
   convergence, reconnect persistence, and process-restart persistence;
 - real S3-compatible replication through Toxiproxy to MinIO, including exact
-  portable keys, object content types, Chronicle checksum/generation metadata,
+  portable keys, object content types, Chronicler checksum/generation metadata,
   human-readable chapter envelopes, tombstones, and cover deletion;
 - a forced S3 outage proving SQLite writes and reads continue, degraded
   readiness remains sanitized, bounded work reaches dead letter, the admin CLI
@@ -62,7 +62,7 @@ image inspection, CLI outputs, and the test-only hot backup in
 
 ## Mandatory offline restore workflow
 
-Restore apply is a recovery operation. Chronicle must be stopped, while the
+Restore apply is a recovery operation. Chronicler must be stopped, while the
 configured replica remains reachable. Review the dry run before applying:
 
 ```sh

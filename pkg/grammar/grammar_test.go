@@ -75,7 +75,7 @@ func TestSpelling_OffsetsIndexTheSubmittedString(t *testing.T) {
 	}
 }
 
-// Chronicle's Typography extension emits curly quotes and em dashes, so a hit
+// Chronicler's Typography extension emits curly quotes and em dashes, so a hit
 // after one must still index correctly on the client, which counts UTF-16
 // units rather than bytes.
 func TestSpelling_OffsetsSurviveNonASCII(t *testing.T) {
@@ -98,7 +98,7 @@ func TestSpelling_IgnoresInventedProperNouns(t *testing.T) {
 	}
 }
 
-// Chronicle must not impose a dialect on a novelist. Caught in review: with
+// Chronicler must not impose a dialect on a novelist. Caught in review: with
 // only en_US loaded, "grey" squiggled red in otherwise clean prose, and every
 // -ise/-our/-re form with it. Both dictionaries are loaded, so the union is
 // accepted — including inflections, which is why the GB dictionary is loaded

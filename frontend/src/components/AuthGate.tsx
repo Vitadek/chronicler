@@ -223,7 +223,7 @@ function TokenPrompt({ onVerified }: { onVerified: (user: AuthUser) => void }) {
         <div className="flex items-center gap-3">
           <KeyRound className="w-4 h-4 opacity-40" />
           <div>
-            <p className="text-[9px] uppercase tracking-[0.2em] font-bold opacity-40">Chronicle</p>
+            <p className="text-[9px] uppercase tracking-[0.2em] font-bold opacity-40">Chronicler</p>
             <h1 className="text-sm font-semibold">Access token required</h1>
           </div>
         </div>

@@ -17,7 +17,7 @@
   body {
     @apply transition-colors duration-500 font-sans antialiased bg-manuscript-light text-[#2C2A24] dark:bg-manuscript-dark dark:text-[#F1EDE4];
   }
-  /* App-like overscroll. Chronicle is an installable PWA, so the page-level
+  /* App-like overscroll. Chronicler is an installable PWA, so the page-level
      pull-to-refresh and rubber-band glow on Android are unwanted — an
      accidental over-pull while scrolling a long chapter shouldn't bounce or
      reload the surface. Scrolling itself is unaffected. */

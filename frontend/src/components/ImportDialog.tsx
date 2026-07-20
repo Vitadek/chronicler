@@ -23,7 +23,7 @@ type Phase =
   | { name: 'failed'; error: string; log: ImportLogEntry[] };
 
 /**
- * Import flow: explains what Chronicle can ingest and how chapters are
+ * Import flow: explains what Chronicler can ingest and how chapters are
  * detected, runs the parser, then reports success (with a log of what was
  * decided) or failure (with why). Parsing lives in src/lib/importService.ts,
  * dynamic-imported so mammoth/jszip stay out of the main bundle.
@@ -159,14 +159,14 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({
                           Contact lines and word counts before the first heading are skipped. No headings → one big chapter.
                         </Row>
                         <Row title="Markdown (.md)">
-                          <code>## Headings</code> split chapters. Chronicle's own exports round-trip: YAML front matter
+                          <code>## Headings</code> split chapters. Chronicler's own exports round-trip: YAML front matter
                           (title, author), <code># Title</code> and <code>By Author</code> lines are all recognized.
                         </Row>
                         <Row title="HTML (.html)">
-                          Chronicle HTML exports import back exactly. Other HTML splits on <code>&lt;h1&gt;/&lt;h2&gt;</code> headings.
+                          Chronicler HTML exports import back exactly. Other HTML splits on <code>&lt;h1&gt;/&lt;h2&gt;</code> headings.
                         </Row>
                         <Row title="Zip of Markdown (.zip)">
-                          Chronicle's multi-chapter Markdown export — each .md file becomes one chapter, in filename order.
+                          Chronicler's multi-chapter Markdown export — each .md file becomes one chapter, in filename order.
                         </Row>
                         <p className="opacity-40 italic text-[10px]">
                           EPUB can't be imported — it's a one-way export. Bring the same book in as .docx, .md, or .html instead.

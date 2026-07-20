@@ -1,4 +1,4 @@
-# Chronicle Go session handoff
+# Chronicler Go session handoff
 
 Last validated: 2026-07-20 at commit `28435b8` (release image built from this
 commit; deployment documentation is the next commit).

@@ -1,6 +1,6 @@
 {
-  "name": "Chronicle",
-  "short_name": "Chronicle",
+  "name": "Chronicler",
+  "short_name": "Chronicler",
   "description": "A robust, self-hosted manuscript workstation for authors.",
   "start_url": "/",
   "scope": "/",

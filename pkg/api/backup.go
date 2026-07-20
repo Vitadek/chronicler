@@ -89,7 +89,7 @@ func (h *BackupHandler) PostExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := fmt.Sprintf("chronicle-%s.chron", time.Now().Format("2006-01-02"))
+	name := fmt.Sprintf("chronicler-%s.chron", time.Now().Format("2006-01-02"))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, name))
 	w.Write(compressed)
@@ -131,7 +131,7 @@ func (h *BackupHandler) PostImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate Chronicle tables using temporary probe file
+	// Validate Chronicler tables using temporary probe file
 	probe := filepath.Join(h.cfg.DataDir, fmt.Sprintf("import-probe-%s.db", stamp()))
 	if err := os.WriteFile(probe, decompressed, 0644); err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -171,7 +171,7 @@ func (h *BackupHandler) PostImport(w http.ResponseWriter, r *http.Request) {
 		if !tables[required] {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(fmt.Sprintf(`{"error":"Not a Chronicle backup (missing \"%s\" table)."}`, required)))
+			w.Write([]byte(fmt.Sprintf(`{"error":"Not a Chronicler backup (missing \"%s\" table)."}`, required)))
 			return
 		}
 	}

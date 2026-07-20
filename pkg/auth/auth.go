@@ -62,7 +62,7 @@ func NewForwardResolver(cfg *config.Config, database *sql.DB) *ForwardResolver {
 	}
 }
 
-// Resolve returns the durable Chronicle user ID. On failure, status and message
+// Resolve returns the durable Chronicler user ID. On failure, status and message
 // are safe to return to the client.
 func (fr *ForwardResolver) Resolve(r *http.Request) (userID string, status int, message string) {
 	if !fr.trustedFilter.Matches(r.RemoteAddr) {

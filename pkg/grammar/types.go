@@ -1,4 +1,4 @@
-// Package grammar is Chronicle's built-in prose checker.
+// Package grammar is Chronicler's built-in prose checker.
 //
 // It replaces the Java LanguageTool sidecar the Node server proxied to. Every
 // check runs in-process against embedded data: no sidecar, no network, no API
@@ -43,7 +43,7 @@ const maxReplacements = 5
 // Start and End are offsets into the SUBMITTED text, measured in UTF-16 code
 // units — not bytes and not runes. That is what the client indexes with
 // (chronicle/src/lib/proseMirrorText.ts walks `t[k]` for k < t.length over a
-// JavaScript string), and it matters in practice because Chronicle's smart
+// JavaScript string), and it matters in practice because Chronicler's smart
 // typography emits curly quotes and em dashes, which are multi-byte in UTF-8.
 type Hit struct {
 	Start int    `json:"start"`

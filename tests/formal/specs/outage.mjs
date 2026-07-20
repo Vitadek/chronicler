@@ -29,7 +29,7 @@ async function setProxy(enabled) {
 
 export async function run() {
   await runSuite('formal-s3-outage', async (test) => {
-    test('Toxiproxy can cut Chronicle off from MinIO deterministically', async () => {
+    test('Toxiproxy can cut Chronicler off from MinIO deterministically', async () => {
       aliceId = (await userIdentity('alice')).id;
       await setProxy(false);
       const response = await fetch(`${toxiproxy}/proxies/minio-s3`);

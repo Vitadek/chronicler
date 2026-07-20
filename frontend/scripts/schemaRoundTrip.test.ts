@@ -11,7 +11,7 @@
  * chapters the author has invested the most annotation in).
  *
  * This test proves two things:
- *   1. Chronicle's real schema (buildCoreExtensions) round-trips every at-risk
+ *   1. Chronicler's real schema (buildCoreExtensions) round-trips every at-risk
  *      construct losslessly.
  *   2. A bare-StarterKit schema DESTROYS them — the negative control, which is
  *      what makes (1) meaningful rather than vacuous.
@@ -78,9 +78,9 @@ async function main() {
 
   let failed = false;
 
-  // ---- 1. Chronicle's real schema must lose NOTHING -----------------------
+  // ---- 1. Chronicler's real schema must lose NOTHING -----------------------
   const coreHtml = roundTrip(getSchema(buildCoreExtensions() as any), ANNOTATED);
-  console.log('Chronicle core schema (buildCoreExtensions) — must be lossless:');
+  console.log('Chronicler core schema (buildCoreExtensions) — must be lossless:');
   for (const c of CHECKS) {
     const ok = c.present(coreHtml);
     if (!ok) failed = true;

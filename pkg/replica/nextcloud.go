@@ -139,7 +139,7 @@ func (p *NextcloudProvider) Put(ctx context.Context, key string, content []byte,
 
 	headers := map[string]string{
 		"OC-Checksum":            "SHA256:" + opts.Checksum,
-		"X-Chronicle-Generation": strconv.Itoa(opts.Generation),
+		"X-Chronicler-Generation": strconv.Itoa(opts.Generation),
 	}
 	if opts.ContentType != "" {
 		headers["Content-Type"] = opts.ContentType
@@ -179,7 +179,7 @@ func (p *NextcloudProvider) Head(ctx context.Context, key string) (*ReplicaObjec
 	}
 
 	var gen *int
-	if rawGen := resp.Header.Get("X-Chronicle-Generation"); rawGen != "" {
+	if rawGen := resp.Header.Get("X-Chronicler-Generation"); rawGen != "" {
 		if g, errScan := strconv.Atoi(rawGen); errScan == nil {
 			gen = &g
 		}
