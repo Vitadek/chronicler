@@ -25,6 +25,13 @@ func stamp() string {
 	return time.Now().Format("2006-01-02T15-04-05Z07-00")
 }
 
+func restoreUserLabel(userID string) string {
+	if userID == "" {
+		return "all"
+	}
+	return userID
+}
+
 func checkConflicts(db *sql.DB, plan *RestorePlan) []string {
 	var conflicts []string
 
@@ -249,7 +256,7 @@ func RunCLI(cfg *config.Config, db *sql.DB, manager *Manager, args []string) boo
 
 		summary := map[string]interface{}{
 			"dryRun":       !*apply,
-			"user":         *user,
+			"user":         restoreUserLabel(*user),
 			"manuscripts":  len(plan.Manuscripts),
 			"chapters":     len(plan.Chapters),
 			"profiles":     len(plan.Profiles),
@@ -334,7 +341,7 @@ func RunCLI(cfg *config.Config, db *sql.DB, manager *Manager, args []string) boo
 
 		resultSummary := map[string]interface{}{
 			"dryRun":       false,
-			"user":         *user,
+			"user":         restoreUserLabel(*user),
 			"manuscripts":  len(plan.Manuscripts),
 			"chapters":     len(plan.Chapters),
 			"profiles":     len(plan.Profiles),

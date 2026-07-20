@@ -78,6 +78,15 @@ func initTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
+func TestRestoreUserLabel(t *testing.T) {
+	if got := restoreUserLabel(""); got != "all" {
+		t.Fatalf("all-user restore label = %q, want all", got)
+	}
+	if got := restoreUserLabel("user-123"); got != "user-123" {
+		t.Fatalf("filtered restore label = %q", got)
+	}
+}
+
 func TestBackoff(t *testing.T) {
 	for attempt := 1; attempt <= 10; attempt++ {
 		val := backoffMs(attempt)
