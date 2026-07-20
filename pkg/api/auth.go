@@ -31,13 +31,26 @@ func NewAuthHandler(cfg *config.Config, database *sql.DB) *AuthHandler {
 }
 
 func (h *AuthHandler) Mount(r chi.Router) {
+	// This router is deliberately mounted OUTSIDE the global auth middleware,
+	// because most of it has to be reachable by an unauthenticated caller:
+	// /config is what the client reads to discover how to log in, and the
+	// OIDC/Nextcloud start+callback legs happen before a session exists.
 	r.Get("/config", h.getConfig)
 	r.Get("/oidc/start", h.startOIDC)
 	r.Get("/oidc/callback", h.callbackOIDC)
 	r.Get("/nextcloud/start", h.startNextcloud)
 	r.Get("/nextcloud/callback", h.callbackNextcloud)
-	r.Get("/me", h.getMe)
-	r.Post("/logout", h.logout)
+
+	// /me and /logout are the exceptions: they need an identity, so they carry
+	// the auth middleware per-route (matching the Node server, which applied
+	// `authMiddleware` to exactly these two). Without it their handlers read an
+	// empty user from the request context and always answered 401 — so
+	// /api/auth/me was broken in every auth mode, even though middleware-
+	// protected routes like /api/manuscripts worked fine. Caught by
+	// tests/formal ("forward identities produce distinct durable local users").
+	authenticated := r.With(auth.AuthMiddleware(h.cfg, h.database))
+	authenticated.Get("/me", h.getMe)
+	authenticated.Post("/logout", h.logout)
 }
 
 func (h *AuthHandler) getConfig(w http.ResponseWriter, r *http.Request) {

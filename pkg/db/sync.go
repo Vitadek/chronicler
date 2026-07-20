@@ -8,7 +8,21 @@ import (
 
 const SyncHistoryEpochKey = "sync:history-epoch:v2"
 
-func GetSyncHistoryEpoch(database *sql.DB) (string, error) {
+// Executor is satisfied by both *sql.DB and *sql.Tx, so callers already inside
+// a transaction can pass it in rather than reaching for a second connection.
+type Executor interface {
+	Exec(query string, args ...interface{}) (sql.Result, error)
+	QueryRow(query string, args ...interface{}) *sql.Row
+}
+
+// GetSyncHistoryEpoch reads the sync epoch, creating it on first use.
+//
+// Takes an Executor, not *sql.DB, because that lazy INSERT is a WRITE. A caller
+// that has already opened a transaction MUST pass its *sql.Tx: with
+// BEGIN IMMEDIATE the transaction holds the write lock, so writing through a
+// separate pooled connection deadlocks the request against itself until
+// busy_timeout expires. (Seen as a 500 "Epoch read failed" on /api/sync/v2.)
+func GetSyncHistoryEpoch(database Executor) (string, error) {
 	var v string
 	err := database.QueryRow("SELECT v FROM kv WHERE k = ?", SyncHistoryEpochKey).Scan(&v)
 	if err == nil {

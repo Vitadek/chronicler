@@ -6,3 +6,8 @@ chronicle-server
 # Frontend build tooling. web/ is NOT ignored — it is the embedded build
 # output that //go:embed requires at compile time.
 frontend/node_modules/
+
+# Formal-suite run output (regenerated each run; may contain database snapshots).
+tests/formal/artifacts/*
+!tests/formal/artifacts/.gitkeep
+tests/formal/node_modules/

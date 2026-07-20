@@ -76,16 +76,28 @@ func (sr *ServerRouter) Init() http.Handler {
 			return
 		}
 
-		var repStatus interface{}
+		// This endpoint is intentionally unauthenticated for orchestrators, so
+		// it exposes a deliberately narrow projection of the replica status —
+		// NOT the whole thing. GetStatus() carries lastError, which contains
+		// provider exception text and can leak internal hostnames, bucket
+		// names or account details. The authenticated CLI (`chronicle-server
+		// status`) keeps the full diagnostic.
+		//
+		// Passing the map through wholesale was a real leak, caught by
+		// tests/formal ("readiness reports SQLite and healthy S3 without
+		// leaking endpoint details", which asserts lastError is absent and
+		// that the body never mentions the S3 endpoint host).
+		repStatus := map[string]interface{}{
+			"provider":    "none",
+			"state":       "disabled",
+			"initialized": true,
+			"pending":     0,
+			"deadLetters": 0,
+		}
 		if sr.replicaManager != nil {
-			repStatus = sr.replicaManager.GetStatus()
-		} else {
-			repStatus = map[string]interface{}{
-				"provider":    "none",
-				"state":       "disabled",
-				"initialized": true,
-				"pending":     0,
-				"deadLetters": 0,
+			full := sr.replicaManager.GetStatus()
+			for _, k := range []string{"provider", "state", "initialized", "pending", "deadLetters"} {
+				repStatus[k] = full[k]
 			}
 		}
 
@@ -222,10 +234,18 @@ func (sr *ServerRouter) Init() http.Handler {
 			// Check if file exists in embed FS
 			if f, errOpen := subFS.Open(strings.TrimPrefix(path, "/")); errOpen == nil {
 				f.Close()
+				// Everything under /assets/ is content-hashed by vite, so a
+				// given URL's bytes never change and it can be cached
+				// permanently. index.html must NOT be: it is the only
+				// unhashed file, and it is what points at the current asset
+				// hashes — caching it would pin clients to a stale build
+				// across deploys.
+				setStaticCacheHeaders(w, path)
 				fileServer.ServeHTTP(w, req)
 				return
 			}
 			// Otherwise serve index.html (fallback for SPA client-side routing)
+			w.Header().Set("Cache-Control", "no-cache")
 			req.URL.Path = "/"
 			fileServer.ServeHTTP(w, req)
 		})
@@ -245,4 +265,18 @@ func corsMiddleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// setStaticCacheHeaders mirrors the cache policy the Node server used
+// (server/index.ts): content-hashed assets are immutable and cached for a
+// year; index.html is never cached, because it is the unhashed entry point
+// that references the current asset hashes.
+func setStaticCacheHeaders(w http.ResponseWriter, urlPath string) {
+	if strings.HasPrefix(urlPath, "/assets/") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		return
+	}
+	if urlPath == "/" || strings.HasSuffix(urlPath, "/index.html") {
+		w.Header().Set("Cache-Control", "no-cache")
+	}
 }

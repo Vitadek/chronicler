@@ -650,6 +650,14 @@ func DeleteManuscript(database *sql.DB, userId string, id string, baseRevision *
 	replData := replica.SerializeManuscriptTombstone(userId, id, now, newRevision)
 	_ = replica.EnqueueReplicaPut(tx, fmt.Sprintf("manuscripts/%s/%s/manuscript.json", userId, id), replData, "application/json")
 
+	// Covers are opaque blobs, not sync records, so the tombstone above says
+	// nothing about them — without this they outlive the manuscript both
+	// locally and in the remote replica. Done inside this transaction so a
+	// crash can never leave the manuscript deleted while its cover is still
+	// published. Mirrors the Node server (portableReplica.ts's
+	// deleteLocalBlobsByPrefix alongside the parent tombstone).
+	_ = replica.EnqueueCoverDeletes(tx, userId, id)
+
 	// Tombstone all live children
 	rows, errQueryChapters := tx.Query(`
 		SELECT id, revision FROM chapters

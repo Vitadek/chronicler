@@ -561,14 +561,17 @@ func currentV2Record(database replica.Queryable, userId string, entity string, i
 		}
 
 		// Parse the data field to structure it for JSON
-		var parsedData map[string]interface{}
-		_ = json.Unmarshal([]byte(rawData), &parsedData)
+		// `data` travels as the raw JSON STRING straight from the column, not
+		// as a decoded object. That is the wire contract the Node server set
+		// (`data: row.data`) and what clients expect — tests/formal does
+		// JSON.parse(change.data). Decoding it here produced a nested object,
+		// so JSON.parse got "[object Object]" and threw.
 
 		return revision, map[string]interface{}{
 			"entity":    entity,
 			"id":        id,
 			"operation": "upsert",
-			"data":      parsedData,
+			"data":      rawData,
 			"revision":  revision,
 			"updatedAt": lastModified,
 		}, nil
@@ -640,14 +643,17 @@ func currentV2Record(database replica.Queryable, userId string, entity string, i
 			return 0, nil, err
 		}
 
-		var parsedProfile map[string]interface{}
-		_ = json.Unmarshal([]byte(rawData), &parsedProfile)
+		// `data` travels as the raw JSON STRING straight from the column, not
+		// as a decoded object. That is the wire contract the Node server set
+		// (`data: row.data`) and what clients expect — tests/formal does
+		// JSON.parse(change.data). Decoding it here produced a nested object,
+		// so JSON.parse got "[object Object]" and threw.
 
 		return revision, map[string]interface{}{
 			"entity":    entity,
 			"id":        "profile",
 			"operation": "upsert",
-			"data":      parsedProfile,
+			"data":      rawData,
 			"revision":  revision,
 			"updatedAt": lastModified,
 		}, nil
@@ -680,7 +686,7 @@ func (h *SyncHandler) syncV2(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	transactionEpoch, errEpoch := db.GetSyncHistoryEpoch(h.database) // read epoch
+	transactionEpoch, errEpoch := db.GetSyncHistoryEpoch(tx) // read through tx: it may lazily INSERT
 	if errEpoch != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)

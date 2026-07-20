@@ -59,7 +59,7 @@ func (m *Manager) Start() {
 
 		// Proactively initialize remote provider connection
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		_ = m.provider.Initialize(ctx)
+		m.recordInitialize(m.provider.Initialize(ctx))
 		cancel()
 
 		// Initial due jobs drain
@@ -89,6 +89,31 @@ func (m *Manager) Close() error {
 		return m.provider.Close()
 	}
 	return nil
+}
+
+// recordInitialize persists the outcome of a provider Initialize call.
+//
+// GetStatus treats a NULL initialized_at as "degraded", so without this the
+// replica could never report healthy no matter how well it was working —
+// /readyz stayed degraded forever and `initialized` was always false. The Node
+// server did the equivalent (`updateState({ initializedAt: Date.now(),
+// lastError: null })` in HybridManager) and this port simply never wrote the
+// column. Caught by tests/formal, whose readiness test waits for
+// replica.state === 'healthy'.
+func (m *Manager) recordInitialize(err error) {
+	if err != nil {
+		_, _ = m.db.Exec(`
+			UPDATE storage_replication_state
+			SET last_attempt_at = ?, last_error = ?
+			WHERE id = 1
+		`, time.Now().UnixMilli(), err.Error())
+		return
+	}
+	_, _ = m.db.Exec(`
+		UPDATE storage_replication_state
+		SET initialized_at = COALESCE(initialized_at, ?), last_error = NULL
+		WHERE id = 1
+	`, time.Now().UnixMilli())
 }
 
 func (m *Manager) GetStatus() map[string]interface{} {
@@ -436,6 +461,10 @@ func (m *Manager) SeedPortableDatabaseManifest() (int, int, error) {
 		if row.deletedAt.Valid {
 			bytes := SerializeManuscriptTombstone(row.userID, row.id, row.deletedAt.Int64, row.revision)
 			changed, errPut = enqueuePutIfChanged(tx, key, bytes, "application/json")
+			// Cover cleanup lives in the delete path itself (pkg/db
+			// DeleteManuscript -> EnqueueCoverDeletes), not here: this walk
+			// only runs at startup/target-change, far too late for a
+			// manuscript deleted while the server is running.
 		} else {
 			bytes, errSer := SerializeManuscript(row.userID, row.id, row.lastModified, row.revision, row.data)
 			if errSer != nil {
@@ -697,8 +726,10 @@ func (m *Manager) Verify(ctx context.Context, prefix string) (*ReplicaVerificati
 	}
 
 	if err := m.provider.Initialize(ctx); err != nil {
+		m.recordInitialize(err)
 		return nil, err
 	}
+	m.recordInitialize(nil)
 
 	res := &ReplicaVerificationResult{
 		Missing:      []string{},
@@ -918,3 +949,52 @@ func (m *Manager) SeedLocalBlobs() int {
 	return count
 }
 
+
+// recordInitializePublic lets the CLI record an Initialize outcome. `status`
+// probes the provider before reporting, and that probe is often the first
+// successful connection after a restart — so it must persist the result too,
+// or the reported state contradicts what just happened.
+func (m *Manager) recordInitializePublic(err error) {
+	m.recordInitialize(err)
+}
+
+// enqueueCoverDeletes removes a deleted manuscript's cover blobs and enqueues
+// the matching remote deletions.
+//
+// Cover keys are `covers/<user>/<manuscript>.<random>.<ext>`, so the prefix
+// `covers/<user>/<manuscript>.` matches every generation of that manuscript's
+// cover without touching another manuscript whose id shares a prefix — the
+// trailing dot is load-bearing.
+// EnqueueCoverDeletes is called from the manuscript delete path in pkg/db.
+func EnqueueCoverDeletes(tx Queryable, userID string, manuscriptID string) error {
+	prefix := fmt.Sprintf("covers/%s/%s.", userID, manuscriptID)
+
+	rows, err := tx.Query("SELECT key FROM storage_blobs WHERE key LIKE ?", prefix+"%")
+	if err != nil {
+		return err
+	}
+	var keys []string
+	for rows.Next() {
+		var k string
+		if errScan := rows.Scan(&k); errScan != nil {
+			rows.Close()
+			return errScan
+		}
+		keys = append(keys, k)
+	}
+	rows.Close()
+
+	for _, k := range keys {
+		if _, errDel := tx.Exec("DELETE FROM storage_blobs WHERE key = ?", k); errDel != nil {
+			return errDel
+		}
+		gen, errGen := NextStorageGeneration(tx, k)
+		if errGen != nil {
+			return errGen
+		}
+		if errEnq := EnqueueAtGeneration(tx, PortableReplicaKey(k), "delete", gen, nil, "", ""); errEnq != nil {
+			return errEnq
+		}
+	}
+	return nil
+}

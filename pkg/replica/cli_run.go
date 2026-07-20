@@ -104,7 +104,7 @@ func RunCLI(cfg *config.Config, db *sql.DB, manager *Manager, args []string) boo
 
 		if manager.Provider() != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			_ = manager.Provider().Initialize(ctx)
+			manager.recordInitializePublic(manager.Provider().Initialize(ctx))
 			cancel()
 		}
 
