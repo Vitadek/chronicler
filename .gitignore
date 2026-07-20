@@ -2,3 +2,7 @@ chronicle-server
 *.db
 *.db-journal
 *.db-wal
+
+# Frontend build tooling. web/ is NOT ignored — it is the embedded build
+# output that //go:embed requires at compile time.
+frontend/node_modules/
