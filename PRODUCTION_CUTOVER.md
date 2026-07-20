@@ -21,11 +21,16 @@ formal Docker suite and persistent MinIO validation.
 
 The production Compose file should retain the `chronicle-data` volume, port
 3000, and the existing authentication policy while replacing the service image
-with the validated Go tag. Then run:
+with the validated Go tag. A Node-created volume is owned by UID:GID 1000:1000,
+while the non-root Go image runs as UID:GID 100:101. Stop the service and
+change that existing volume's ownership once before starting Go:
 
 ```sh
 cd /opt/chronicle/docker/agent-1
 docker compose pull chronicle
+docker compose stop chronicle
+docker run --rm -v chronicle_chronicle-data:/data alpine:3.22 \
+  chown -R 100:101 /data
 docker compose up -d --wait --remove-orphans
 curl --fail --silent --show-error http://127.0.0.1:3000/readyz
 docker compose exec -T chronicle /app/chronicle-server status
@@ -37,11 +42,16 @@ is not part of the new topology.
 ## Roll back
 
 Do not delete the named volume. Replace the Chronicle service image with the
-Node rollback tag, restore the pre-cutover Compose settings from the backup
-directory named by `/opt/chronicle/workspace/.last-cutover-backup`, and run:
+Node rollback tag and restore the pre-cutover Compose settings from the backup
+directory named by `/opt/chronicle/workspace/.last-cutover-backup`. Because the
+Node image runs as UID:GID 1000:1000, reverse the ownership change while the
+service is stopped, then start it:
 
 ```sh
 cd /opt/chronicle/docker/agent-1
+docker compose stop chronicle
+docker run --rm -v chronicle_chronicle-data:/data alpine:3.22 \
+  chown -R 1000:1000 /data
 docker compose up -d --wait
 curl --fail --silent --show-error http://127.0.0.1:3000/readyz
 ```
@@ -49,3 +59,14 @@ curl --fail --silent --show-error http://127.0.0.1:3000/readyz
 If a database rollback is required, stop Chronicle first and restore
 `chronicle.db` from the recorded pre-cutover directory. Never copy a database
 over the live file while SQLite is running.
+
+## 2026-07-20 result
+
+The live cutover completed successfully after the one-time ownership change.
+The production container is healthy on port 3000 and runs the validated Go
+digest. One active manuscript with five chapters remained readable, its full
+API response was byte-identical across a graceful restart, the installed
+proofreader remained visible, and the embedded grammar endpoint returned both
+misspelling and style results. A post-cutover hot backup passes SQLite
+`quick_check`. Warm readiness and manuscript-list requests measured about
+0.6 ms locally; runtime memory measured about 115 MiB.
