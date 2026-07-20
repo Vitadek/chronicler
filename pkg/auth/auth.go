@@ -45,6 +45,67 @@ type NextcloudOAuth struct {
 	ExpiresInSec int
 }
 
+// ForwardResolver authenticates requests made by a trusted forward-auth proxy.
+// It is shared by the HTTP middleware and the collaboration WebSocket handshake
+// so both entry points enforce exactly the same trust boundary.
+type ForwardResolver struct {
+	cfg           *config.Config
+	database      *sql.DB
+	trustedFilter *IPFilter
+}
+
+func NewForwardResolver(cfg *config.Config, database *sql.DB) *ForwardResolver {
+	return &ForwardResolver{
+		cfg:           cfg,
+		database:      database,
+		trustedFilter: ParseTrustedProxies(cfg.Auth.Forward.TrustedProxies),
+	}
+}
+
+// Resolve returns the durable Chronicle user ID. On failure, status and message
+// are safe to return to the client.
+func (fr *ForwardResolver) Resolve(r *http.Request) (userID string, status int, message string) {
+	if !fr.trustedFilter.Matches(r.RemoteAddr) {
+		fmt.Printf("[auth/forward] rejected untrusted peer %s\n", r.RemoteAddr)
+		return "", http.StatusForbidden, "Untrusted proxy"
+	}
+
+	if fr.cfg.Auth.Forward.SharedSecret != "" {
+		secretHeader := fr.cfg.Auth.Forward.SharedSecretHeader
+		if secretHeader == "" {
+			secretHeader = "X-Forward-Auth-Secret"
+		}
+		if !timingSafeEq(r.Header.Get(secretHeader), fr.cfg.Auth.Forward.SharedSecret) {
+			return "", http.StatusForbidden, "Missing or bad shared secret"
+		}
+	}
+
+	username := r.Header.Get(fr.cfg.Auth.Forward.HeaderUser)
+	if username == "" {
+		return "", http.StatusUnauthorized, "No identity header from proxy"
+	}
+
+	email := r.Header.Get(fr.cfg.Auth.Forward.HeaderEmail)
+	var emailPtr *string
+	if email != "" {
+		emailPtr = &email
+	}
+
+	displayName := r.Header.Get(fr.cfg.Auth.Forward.HeaderName)
+	var displayNamePtr *string
+	if displayName != "" {
+		displayNamePtr = &displayName
+	} else {
+		displayNamePtr = &username
+	}
+
+	userID, err := UpsertExternalUser(fr.database, "forward", "proxy", username, emailPtr, displayNamePtr)
+	if err != nil {
+		return "", http.StatusInternalServerError, err.Error()
+	}
+	return userID, 0, ""
+}
+
 func GenerateRandomToken() (string, error) {
 	b := make([]byte, 32)
 	_, err := rand.Read(b)
@@ -163,7 +224,7 @@ func bearerFromHeader(r *http.Request) string {
 }
 
 func AuthMiddleware(cfg *config.Config, database *sql.DB) func(http.Handler) http.Handler {
-	trustedFilter := ParseTrustedProxies(cfg.Auth.Forward.TrustedProxies)
+	forwardResolver := NewForwardResolver(cfg, database)
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -214,58 +275,11 @@ func AuthMiddleware(cfg *config.Config, database *sql.DB) func(http.Handler) htt
 				next.ServeHTTP(w, r.WithContext(ctx))
 
 			case config.AuthModeForward:
-				// Validate peer IP matches trusted proxies
-				remoteIP := r.RemoteAddr
-				if !trustedFilter.Matches(remoteIP) {
-					fmt.Printf("[auth/forward] rejected untrusted peer %s\n", remoteIP)
+				userID, status, message := forwardResolver.Resolve(r)
+				if status != 0 {
 					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusForbidden)
-					json.NewEncoder(w).Encode(map[string]string{"error": "Untrusted proxy"})
-					return
-				}
-
-				// Check optional shared secret
-				if cfg.Auth.Forward.SharedSecret != "" {
-					secHeader := cfg.Auth.Forward.SharedSecretHeader
-					if secHeader == "" {
-						secHeader = "X-Forward-Auth-Secret"
-					}
-					got := r.Header.Get(secHeader)
-					if !timingSafeEq(got, cfg.Auth.Forward.SharedSecret) {
-						w.Header().Set("Content-Type", "application/json")
-						w.WriteHeader(http.StatusForbidden)
-						json.NewEncoder(w).Encode(map[string]string{"error": "Missing or bad shared secret"})
-						return
-					}
-				}
-
-				username := r.Header.Get(cfg.Auth.Forward.HeaderUser)
-				if username == "" {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusUnauthorized)
-					json.NewEncoder(w).Encode(map[string]string{"error": "No identity header from proxy"})
-					return
-				}
-
-				email := r.Header.Get(cfg.Auth.Forward.HeaderEmail)
-				var emailPtr *string
-				if email != "" {
-					emailPtr = &email
-				}
-
-				displayName := r.Header.Get(cfg.Auth.Forward.HeaderName)
-				var dispPtr *string
-				if displayName != "" {
-					dispPtr = &displayName
-				} else {
-					dispPtr = &username
-				}
-
-				userID, err := UpsertExternalUser(database, "forward", "proxy", username, emailPtr, dispPtr)
-				if err != nil {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusInternalServerError)
-					json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+					w.WriteHeader(status)
+					json.NewEncoder(w).Encode(map[string]string{"error": message})
 					return
 				}
 

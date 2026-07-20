@@ -7,10 +7,12 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
+	"chronicle-server/pkg/auth"
 	"chronicle-server/pkg/config"
 	"chronicle-server/pkg/db"
 	"chronicle-server/pkg/replica"
@@ -36,6 +38,16 @@ const (
 	msgPong               = 10
 )
 
+const (
+	maxCollabMessageBytes = 8 << 20
+	handshakeTimeout      = 10 * time.Second
+	authTokenMessage      = 0
+	authPermissionDenied  = 1
+	authAuthenticated     = 2
+)
+
+var safeDocumentID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
 type ScopedDocumentName struct {
 	UserId       string
 	ManuscriptId string
@@ -55,12 +67,15 @@ func parseDocumentName(docName string) (*ScopedDocumentName, error) {
 		return nil, fmt.Errorf("invalid document scope")
 	}
 	actualColon := slash + 1 + colon
-	userId, err := url.QueryUnescape(docName[:slash])
+	userId, err := url.PathUnescape(docName[:slash])
 	if err != nil {
 		return nil, fmt.Errorf("failed to unescape userId: %w", err)
 	}
 	manuscriptId := docName[slash+1 : actualColon]
 	chapterId := docName[actualColon+1:]
+	if userId == "" || !safeDocumentID.MatchString(manuscriptId) || !safeDocumentID.MatchString(chapterId) {
+		return nil, fmt.Errorf("invalid document scope")
+	}
 
 	return &ScopedDocumentName{
 		UserId:       userId,
@@ -75,6 +90,7 @@ type Hub struct {
 	db         *sql.DB
 	cfg        *config.Config
 	upgrader   websocket.Upgrader
+	forward    *auth.ForwardResolver
 	shutdownCh chan struct{}
 }
 
@@ -83,6 +99,7 @@ func NewHub(database *sql.DB, cfg *config.Config) *Hub {
 		rooms: make(map[string]*Room),
 		db:    database,
 		cfg:   cfg,
+		forward: auth.NewForwardResolver(cfg, database),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				return true // Gate CORS at Authorize step
@@ -121,25 +138,7 @@ type Peer struct {
 }
 
 func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Parse room name from URL Path value or segment
-	roomName := r.PathValue("room")
-	if roomName == "" {
-		roomName = strings.TrimPrefix(r.URL.Path, "/collab/")
-		roomName = strings.TrimPrefix(roomName, "/")
-	}
-
-	if roomName == "" {
-		http.Error(w, "missing room name", http.StatusBadRequest)
-		return
-	}
-
-	parsed, err := parseDocumentName(roomName)
-	if err != nil {
-		http.Error(w, "invalid room name scope", http.StatusBadRequest)
-		return
-	}
-
-	// 1. Authenticate user
+	pathRoom := roomNameFromPath(r)
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		token = r.URL.Query().Get("auth_token")
@@ -151,28 +150,94 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	userId, authorized := h.resolveUser(token)
-	if !authorized || userId != parsed.UserId {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
+
+	userID := ""
+	if h.cfg.Auth.Mode == config.AuthModeForward {
+		var status int
+		var message string
+		userID, status, message = h.forward.Resolve(r)
+		if status != 0 {
+			http.Error(w, message, status)
+			return
+		}
+	} else if h.cfg.Auth.Mode == config.AuthModeNone {
+		userID = db.LocalUserID
+	} else if token != "" {
+		var authorized bool
+		userID, authorized = h.resolveUser(token)
+		if !authorized {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 	}
 
-	// 2. Verify chapter exists and belongs to the user
-	var exists int
-	err = h.db.QueryRow(`
-		SELECT 1 FROM chapters
-		WHERE user_id = ? AND manuscript_id = ? AND id = ? AND deleted_at IS NULL
-	`, parsed.UserId, parsed.ManuscriptId, parsed.ChapterId).Scan(&exists)
-	if err != nil {
-		http.Error(w, "chapter not found", http.StatusNotFound)
-		return
-	}
-
-	// 3. Upgrade to websocket connection
+	// Hocuspocus sends the document name (and token, when configured) in its
+	// binary protocol rather than in the WebSocket URL, so complete the upgrade
+	// before resolving the room for the common /collab connection path.
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
+	conn.SetReadLimit(maxCollabMessageBytes)
+	_ = conn.SetReadDeadline(time.Now().Add(handshakeTimeout))
+
+	messageType, firstData, err := conn.ReadMessage()
+	if err != nil || messageType != websocket.BinaryMessage {
+		closeWithPolicy(conn, "invalid collaboration handshake")
+		return
+	}
+
+	roomName, firstType, firstPayload, err := decodeHocuspocusFrame(firstData)
+	if err != nil || roomName == "" || (pathRoom != "" && roomName != pathRoom) {
+		denyConnection(conn, roomName, "invalid document scope")
+		return
+	}
+	parsed, err := parseDocumentName(roomName)
+	if err != nil {
+		denyConnection(conn, roomName, "invalid document scope")
+		return
+	}
+
+	if userID == "" {
+		if firstType != msgAuth {
+			denyConnection(conn, roomName, "authentication required")
+			return
+		}
+		protocolToken, err := decodeAuthToken(firstPayload)
+		if err != nil {
+			denyConnection(conn, roomName, "invalid authentication message")
+			return
+		}
+		var authorized bool
+		userID, authorized = h.resolveUser(protocolToken)
+		if !authorized {
+			denyConnection(conn, roomName, "authentication failed")
+			return
+		}
+		if err := conn.WriteMessage(websocket.BinaryMessage, encodeAuthResult(roomName, authAuthenticated, "read-write")); err != nil {
+			conn.Close()
+			return
+		}
+		firstData = nil // The authentication frame is complete, not a Yjs update.
+	} else if firstType == msgAuth {
+		// A pre-authenticated URL/header client may still emit the Hocuspocus auth
+		// frame. Acknowledge it, while retaining the already verified identity.
+		if err := conn.WriteMessage(websocket.BinaryMessage, encodeAuthResult(roomName, authAuthenticated, "read-write")); err != nil {
+			conn.Close()
+			return
+		}
+		firstData = nil
+	}
+
+	if userID != parsed.UserId {
+		denyConnection(conn, roomName, "unauthorized document scope")
+		return
+	}
+	if !h.chapterExists(parsed) {
+		denyConnection(conn, roomName, "collaborative chapter no longer exists")
+		return
+	}
+	_ = conn.SetReadDeadline(time.Time{})
 
 	h.mu.Lock()
 	room, ok := h.rooms[roomName]
@@ -210,7 +275,30 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Start reader & writer loops
 	go peer.writer()
+	if firstData != nil && !peer.handleMessage(firstData) {
+		peer.room.removePeer(peer)
+		peer.conn.Close()
+		return
+	}
 	peer.reader()
+}
+
+func roomNameFromPath(r *http.Request) string {
+	roomName := r.PathValue("room")
+	if roomName == "" {
+		roomName = strings.TrimPrefix(r.URL.Path, "/collab/")
+		roomName = strings.TrimPrefix(roomName, "/")
+	}
+	return roomName
+}
+
+func (h *Hub) chapterExists(parsed *ScopedDocumentName) bool {
+	var exists int
+	err := h.db.QueryRow(`
+		SELECT 1 FROM chapters
+		WHERE user_id = ? AND manuscript_id = ? AND id = ? AND deleted_at IS NULL
+	`, parsed.UserId, parsed.ManuscriptId, parsed.ChapterId).Scan(&exists)
+	return err == nil
 }
 
 func (h *Hub) resolveUser(token string) (string, bool) {
@@ -287,52 +375,51 @@ func (p *Peer) reader() {
 	}()
 
 	for {
-		_, data, err := p.conn.ReadMessage()
+		messageType, data, err := p.conn.ReadMessage()
 		if err != nil {
 			break
 		}
-
-		docName, outerType, payload, err := decodeHocuspocusFrame(data)
-		if err != nil {
-			continue
-		}
-
-		if docName != p.room.name {
-			continue // Scope mismatch
-		}
-
-		switch outerType {
-		case msgSync, msgSyncReply:
-			p.room.mu.Lock()
-			reply, err := ygsync.ApplySyncMessage(p.room.doc, payload, p)
-			if err == nil {
-				p.room.dirty = true
-				p.room.lastModified = time.Now().UnixMilli()
-			}
-			p.room.mu.Unlock()
-
-			if err != nil {
-				continue
-			}
-
-			if reply != nil && outerType == msgSync {
-				p.send(encodeHocuspocusFrame(docName, msgSync, reply))
-			} else {
-				// Broadcast update payload
-				p.room.broadcast(p, encodeHocuspocusFrame(docName, msgSync, payload))
-			}
-
-		case msgAwareness:
-			// Simply relay awareness updates to all other peers
-			p.room.broadcast(p, data)
-
-		case msgPing:
-			p.send(encodeHocuspocusFrame(docName, msgPong, nil))
-
-		case msgClose:
-			return
+		if messageType != websocket.BinaryMessage || !p.handleMessage(data) {
+			break
 		}
 	}
+}
+
+func (p *Peer) handleMessage(data []byte) bool {
+	docName, outerType, payload, err := decodeHocuspocusFrame(data)
+	if err != nil || docName != p.room.name {
+		return true
+	}
+
+	switch outerType {
+	case msgSync, msgSyncReply:
+		p.room.mu.Lock()
+		reply, err := ygsync.ApplySyncMessage(p.room.doc, payload, p)
+		if err == nil {
+			p.room.dirty = true
+			p.room.lastModified = time.Now().UnixMilli()
+		}
+		p.room.mu.Unlock()
+		if err != nil {
+			return true
+		}
+		if reply != nil && outerType == msgSync {
+			p.send(encodeHocuspocusFrame(docName, msgSync, reply))
+		} else {
+			p.room.broadcast(p, encodeHocuspocusFrame(docName, msgSync, payload))
+		}
+	case msgAwareness:
+		p.room.broadcast(p, data)
+	case msgQueryAwareness:
+		// Hocuspocus accepts an empty awareness reply; peers will subsequently
+		// broadcast their current state through the normal awareness channel.
+		p.send(encodeHocuspocusFrame(docName, msgAwareness, nil))
+	case msgPing:
+		p.send(encodeHocuspocusFrame(docName, msgPong, nil))
+	case msgClose:
+		return false
+	}
+	return true
 }
 
 func (p *Peer) writer() {
@@ -566,4 +653,41 @@ func decodeHocuspocusFrame(data []byte) (string, uint64, []byte, error) {
 		return "", 0, nil, err
 	}
 	return docName, outerType, dec.RemainingBytes(), nil
+}
+
+func decodeAuthToken(payload []byte) (string, error) {
+	dec := encoding.NewDecoder(payload)
+	authType, err := dec.ReadVarUint()
+	if err != nil || authType != authTokenMessage {
+		return "", fmt.Errorf("unsupported authentication message")
+	}
+	token, err := dec.ReadVarString()
+	if err != nil || token == "" {
+		return "", fmt.Errorf("missing authentication token")
+	}
+	return token, nil
+}
+
+func encodeAuthResult(docName string, authType uint64, message string) []byte {
+	payload := encoding.NewEncoder()
+	payload.WriteVarUint(authType)
+	payload.WriteVarString(message)
+	return encodeHocuspocusFrame(docName, msgAuth, payload.Bytes())
+}
+
+func denyConnection(conn *websocket.Conn, docName, reason string) {
+	if docName != "" {
+		_ = conn.WriteMessage(websocket.BinaryMessage, encodeAuthResult(docName, authPermissionDenied, reason))
+	}
+	closeWithPolicy(conn, reason)
+}
+
+func closeWithPolicy(conn *websocket.Conn, reason string) {
+	deadline := time.Now().Add(time.Second)
+	_ = conn.WriteControl(
+		websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.ClosePolicyViolation, reason),
+		deadline,
+	)
+	_ = conn.Close()
 }
