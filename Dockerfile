@@ -73,8 +73,10 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD wget -qO- http://127.0.0.1:3000/readyz >/dev/null || exit 1
 
-LABEL org.opencontainers.image.source=https://forgejo.lan/protoman/chronicle-go.git
-LABEL org.opencontainers.image.description="Chronicle: A robust, self-hosted manuscript workstation (Go)."
+LABEL org.opencontainers.image.source=https://github.com/Vitadek/chronicler.git
+LABEL org.opencontainers.image.url=https://chronicler.ink
+LABEL org.opencontainers.image.title="Chronicler"
+LABEL org.opencontainers.image.description="A focused, self-hosted manuscript workstation."
 LABEL org.opencontainers.image.licenses=MIT
 
 ENTRYPOINT ["/sbin/tini", "--"]
