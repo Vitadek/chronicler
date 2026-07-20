@@ -7,8 +7,7 @@
     "node": "22.x"
   },
   "scripts": {
-    "test": "node specs/run.mjs",
-    "fixture:languagetool": "node fixtures/languagetool-server.mjs"
+    "test": "node specs/run.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1085.0",

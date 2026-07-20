@@ -24,7 +24,7 @@ MinIO, MinIO Client, and Toxiproxy images.
   cleanup against the exact candidate image;
 - health, sanitized readiness, public static assets, forward-auth rejection,
   user isolation, and JSON API 404 behavior;
-- deterministic LanguageTool proxy behavior;
+- deterministic built-in grammar engine behavior;
 - Unicode manuscript CRUD, optimistic revisions, same-record conflicts,
   different-chapter v2 concurrency, idempotent deletes, and scrubbed
   tombstones;
@@ -40,7 +40,7 @@ MinIO, MinIO Client, and Toxiproxy images.
 - a forced S3 outage proving SQLite writes and reads continue, degraded
   readiness remains sanitized, bounded work reaches dead letter, the admin CLI
   retries it, deep verification passes, and all missing objects recover;
-- hot SQLite backup through `dist/cli.cjs`, backup artifact capture, container
+- hot SQLite backup through the Go maintenance CLI, backup artifact capture, container
   restart, identity/data/settings/tombstone/collaboration durability, and final
   replica verification;
 - a real-MinIO recovery snapshot followed by seven dead-lettered local
@@ -67,11 +67,11 @@ configured replica remains reachable. Review the dry run before applying:
 
 ```sh
 docker compose stop chronicle
-docker compose run --rm --no-deps chronicle node dist/cli.cjs restore
-docker compose run --rm --no-deps chronicle node dist/cli.cjs restore --user '<user-id>'
-docker compose run --rm --no-deps chronicle node dist/cli.cjs restore --apply --force
+docker compose run --rm --no-deps chronicle /app/chronicle-server restore
+docker compose run --rm --no-deps chronicle /app/chronicle-server restore --user '<user-id>'
+docker compose run --rm --no-deps chronicle /app/chronicle-server restore --apply --force
 docker compose up --detach chronicle
-docker compose exec chronicle node dist/cli.cjs verify
+docker compose exec chronicle /app/chronicle-server verify
 ```
 
 Never use `docker compose exec chronicle ... restore --apply`: `exec` requires
