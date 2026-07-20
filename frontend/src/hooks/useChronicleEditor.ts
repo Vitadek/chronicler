@@ -1,13 +1,9 @@
-import { useMemo, useEffect, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { useEditor } from '@tiptap/react';
 import Focus from '@tiptap/extension-focus';
 import BubbleMenuExtension from '@tiptap/extension-bubble-menu';
-import { Autocomplete } from '../lib/Autocomplete';
 import { CommandLine } from '../lib/CommandLine';
-import { Grammar, type GrammarMark } from '../lib/Grammar';
-import { ProofreadHighlight } from '../lib/ProofreadHighlight';
 import { buildCoreExtensions, EDITOR_KEYBOARD_ATTRS } from '../lib/editorExtensions';
-import { autocompleteKey } from '../lib/Autocomplete';
 import type { AnyExtension } from '@tiptap/core';
 
 export interface UseChronicleEditorProps {
@@ -15,24 +11,12 @@ export interface UseChronicleEditorProps {
   onUpdate?: (content: string) => void;
   placeholder?: string;
   className?: string;
-  isAutocompleteEnabled?: boolean;
   commandLineOptions?: any;
-  /** When true, suppress touch-hostile affordances (the caret-anchored
-   *  autocomplete ghost-text). Keyboard-control attributes below are set
-   *  unconditionally since desktop browsers ignore the mobile-only ones. */
-  isTouchUI?: boolean;
-  /** Live grammar/style squiggles via the server LanguageTool proxy (lib/Grammar.ts). */
-  isGrammarCheckEnabled?: boolean;
-  /** Receives the current marks after each recompute ('lint') or when the
-   *  checker is switched off ('cleared') — see GrammarOptions.onMarks. */
-  onGrammarMarks?: (marks: GrammarMark[], reason?: 'lint' | 'cleared') => void;
-  /** Deterministic autocorrect + sentence-start capitalization (lib/AutoCorrect.ts). */
-  isAutoCorrectEnabled?: boolean;
   /**
    * TipTap extensions contributed by enabled plugins (the `editorExtensions`
    * slot). Passed in by the caller rather than read from context here, so this
    * hook stays usable outside the plugin host (e.g. the mobile editor bundle).
-   * This is the seam grammar/autocorrect checkers move through.
+   * This is the seam editor checkers and other extensions move through.
    */
   pluginExtensions?: AnyExtension[];
   /**
@@ -47,34 +31,20 @@ export function useChronicleEditor({
   onUpdate, 
   placeholder = 'Once upon a time...',
   className = 'novel-editor-content focus:outline-none min-h-[500px]',
-  isAutocompleteEnabled = false,
   commandLineOptions,
-  isTouchUI = false,
-  isGrammarCheckEnabled = false,
-  onGrammarMarks,
-  isAutoCorrectEnabled = true,
   pluginExtensions,
   singleLineHeading = false,
 }: UseChronicleEditorProps) {
   // Core prose + marks come from the shared module so the mobile editor bundle
   // stays in sync (smart quotes, no-stray-space, marks). The web-only
-  // interactive layer (focus dimming, autocomplete ghost-text, the #! command
-  // portal, selection bubble) is layered on top here.
-  const onGrammarMarksRef = useRef(onGrammarMarks);
-  onGrammarMarksRef.current = onGrammarMarks;
-
+  // interactive layer (focus dimming, the #! command portal, and selection
+  // bubble) is layered on top here.
   const extensions = useMemo(() => [
     ...buildCoreExtensions({ placeholder, singleLineHeading }),
     Focus.configure({
       className: 'has-focus',
       mode: 'all',
     }),
-    Grammar.configure({
-      enabled: false, // toggled at runtime via the effect below
-      onMarks: (marks, reason) => onGrammarMarksRef.current?.(marks, reason),
-    }),
-    ProofreadHighlight, // current-issue emphasis in Proofread mode; no-op elsewhere
-    Autocomplete,
     CommandLine.configure({
       suggestion: {
         char: '#!',
@@ -122,31 +92,6 @@ export function useChronicleEditor({
     },
     editorProps,
   });
-
-  useEffect(() => {
-    const autocompleteStorage = (editor?.storage as any)?.autocomplete;
-    if (editor && !editor.isDestroyed && autocompleteStorage) {
-      // The ghost-text suggestion is a widget decoration rendered at the
-      // caret. On touch keyboards that disrupts IME composition, and it can't
-      // be accepted anyway (there's no Tab key), so force it off in touch UI.
-      autocompleteStorage.enabled = isAutocompleteEnabled && !isTouchUI;
-      // Meta-tagged so a disabled->enabled flip recomputes immediately even
-      // though apply() now early-returns while disabled (see Autocomplete.ts).
-      editor.view.dispatch(editor.state.tr.setMeta(autocompleteKey, { refresh: true }));
-    }
-  }, [isAutocompleteEnabled, isTouchUI, editor]);
-
-  useEffect(() => {
-    if (editor && !editor.isDestroyed) {
-      editor.commands.setGrammarCheck(isGrammarCheckEnabled);
-    }
-  }, [isGrammarCheckEnabled, editor]);
-
-  useEffect(() => {
-    if (editor && !editor.isDestroyed) {
-      editor.commands.setAutoCorrect(isAutoCorrectEnabled);
-    }
-  }, [isAutoCorrectEnabled, editor]);
 
   return editor;
 }

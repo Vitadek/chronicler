@@ -8,10 +8,8 @@ import { PluginBoundary } from '../plugins/host/PluginBoundary';
 import { pluginService, type InstalledPlugin, type PluginCommit } from '../services/pluginService';
 import type { PluginContext } from '../plugins/api';
 
-/** `core:grammar` → "Grammar Check", for the "Replaces the built-in …" line. */
+/** Friendly labels for replaceable built-in features. */
 const CORE_FEATURE_NAMES: Record<string, string> = {
-  'core:grammar': 'Grammar Check',
-  'core:autocorrect': 'Autocorrect',
   'core:proofreader': 'Proofread mode',
 };
 const coreFeatureName = (cap: string) => CORE_FEATURE_NAMES[cap] ?? cap;
@@ -387,7 +385,7 @@ const PluginsPanelImpl: React.FC<{ isDarkMode: boolean }> = ({ isDarkMode }) => 
                   )}
 
                   {/* The plugin's own settings (the `settingsPanel` slot) —
-                      e.g. Grammar Check's custom dictionary. */}
+                      e.g. a checker's custom dictionary. */}
                   {p.enabled && (() => {
                     const Panel = loaded.find((l) => l.plugin.id === p.id)?.plugin.contributes?.settingsPanel;
                     if (!Panel) return null;

@@ -38,12 +38,6 @@ interface EditorViewProps {
   isTitlePage?: boolean;
   /** Cover image filename to display at the top of the title page. */
   coverArt?: string;
-  isAutocompleteEnabled?: boolean;
-  /** Live grammar/style squiggles in the body editor (lib/Grammar.ts, LanguageTool). */
-  isGrammarCheckEnabled?: boolean;
-  /** Deterministic autocorrect + sentence-start capitalization (lib/AutoCorrect.ts). */
-  isAutoCorrectEnabled?: boolean;
-  onGrammarMarks?: (marks: import('../lib/Grammar').GrammarMark[]) => void;
   isZenModeEnabled?: boolean;
   /** Whether body paragraphs render with a first-line indent. SMF default. */
   isFirstLineIndentEnabled?: boolean;
@@ -70,10 +64,6 @@ export const EditorView: React.FC<EditorViewProps> = ({
   chapterId,
   isTitlePage,
   coverArt,
-  isAutocompleteEnabled,
-  isGrammarCheckEnabled = false,
-  isAutoCorrectEnabled = true,
-  onGrammarMarks,
   isZenModeEnabled,
   isFirstLineIndentEnabled = true,
   isTouchUI = false,
@@ -336,13 +326,9 @@ export const EditorView: React.FC<EditorViewProps> = ({
     content: `<h1>${title}</h1>`,
     placeholder: isTitlePage ? 'Manuscript Title' : 'Chapter Title',
     className: cn('novel-title-editor focus:outline-none mb-12', isTitlePage && 'text-center text-4xl sm:text-6xl'),
-    isAutocompleteEnabled,
-    // Titles are deliberate (proper nouns, stylistic casing) — don't autocorrect them.
-    isAutoCorrectEnabled: false,
     // The title is always exactly one H1: Ctrl+A + Delete empties it instead of
     // demoting it to a paragraph, and Enter can't split it into extra blocks.
     singleLineHeading: true,
-    isTouchUI,
     onUpdate: (html) => {
       const text = html.replace(/<[^>]*>?/gm, '').trim();
       onUpdate(text, content);
@@ -356,16 +342,8 @@ export const EditorView: React.FC<EditorViewProps> = ({
     className: cn('novel-editor-content focus:outline-none', !isTitlePage && 'min-h-[500px]', isTitlePage && 'text-center text-2xl'),
     // In collab mode this editor is built but never mounted (CollabEditor
     // renders instead, see below) — its only job is to stay ready in case
-    // collab is toggled off. Skip the checker/autocomplete passes on this
-    // hidden, content-frozen doc: they're pure waste (nothing reads a doc
-    // that's never shown) and previously overwrote parent checker state
-    // with results from stale, divergent content (G1 in
-    // frontend_optimizations.md).
-    isAutocompleteEnabled: isAutocompleteEnabled && !collabEnabled,
-    isGrammarCheckEnabled: isGrammarCheckEnabled && !isTitlePage && !collabEnabled,
-    isAutoCorrectEnabled: isAutoCorrectEnabled && !isTitlePage,
-    onGrammarMarks,
-    isTouchUI,
+    // collab is toggled off. This hidden, content-frozen doc does no optional
+    // checker work; nothing reads it until collaboration is disabled again.
     commandLineOptions,
     // Plugin extensions apply to the prose, not the title field.
     pluginExtensions: isTitlePage ? undefined : pluginExtensions,

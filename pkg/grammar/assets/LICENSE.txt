@@ -9,11 +9,8 @@ The 50,000 most frequent English words, one per line, most frequent first
 always validated against the Hunspell dictionary below first.
 
 Derived from Peter Norvig's count_1w.txt (https://norvig.com/ngrams/), itself
-built from the Google Web Trillion Word Corpus. The same corpus already backs
-the autocomplete wordlist in the Chronicle frontend
-(chronicle/src/lib/autocomplete/wordlist.ts), which filters to words of length
->= 4; this copy keeps short words so that corrections like "teh" -> "the" rank
-correctly.
+built from the Google Web Trillion Word Corpus. This copy keeps short words so
+that corrections like "teh" -> "the" rank correctly.
 
 ================================================================================
 en_US.dic, en_US.aff — en_US Hunspell dictionary

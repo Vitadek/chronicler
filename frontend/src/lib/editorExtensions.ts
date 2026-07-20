@@ -4,7 +4,6 @@ import { Extension } from '@tiptap/core';
 import Placeholder from '@tiptap/extension-placeholder';
 import CharacterCount from '@tiptap/extension-character-count';
 import Typography from '@tiptap/extension-typography';
-import { AutoCorrect } from './AutoCorrect';
 import { Epigraph } from './Epigraph';
 import { CommentMark } from './Comment';
 import { AudioMark } from './Audio';
@@ -69,8 +68,8 @@ export interface CoreExtensionOptions {
  * typography, underline, placeholder, word counting, and the inline marks
  * (epigraph / comment / audio).
  *
- * The web-only interactive layer — Focus dimming, the Autocomplete ghost-text,
- * the `#!` CommandLine portal, and the selection BubbleMenu — is added on top
+ * The web-only interactive layer — Focus dimming, the `#!` CommandLine portal,
+ * and the selection BubbleMenu — is added on top
  * in useChronicleEditor. The mobile bundle leaves those out and drives the
  * equivalent affordances from native Flutter UI over the JS bridge.
  */
@@ -99,9 +98,6 @@ export function buildCoreExtensions(
     Placeholder.configure({ placeholder }),
     CharacterCount,
     Typography,
-    // Deterministic autocorrect + sentence-start capitalization. Sits right after
-    // Typography so both share the single-Backspace-undo input-rule behavior.
-    AutoCorrect,
     Epigraph,
     CommentMark,
     AudioMark,

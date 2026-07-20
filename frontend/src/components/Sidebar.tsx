@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo } from 'react';
-import { Book, Plus, MoreVertical, Menu, X, Trash2, Settings, ChevronLeft, Moon, Sun, Cloud, Layout, Copy, GripVertical, FileText, Search, Upload, Check, Download, Briefcase, User, Info, Library, AlignLeft, Smartphone, SpellCheck, CaseSensitive } from 'lucide-react';
+import { Book, Plus, MoreVertical, Menu, X, Trash2, Settings, ChevronLeft, Moon, Sun, Cloud, Layout, Copy, GripVertical, FileText, Search, Upload, Check, Download, Briefcase, User, Info, Library, AlignLeft, Smartphone } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { Chapter, ManuscriptMetadata, UserProfile, ExportSettings, DEFAULT_EXPORT_SETTINGS } from '../types';
@@ -43,12 +43,6 @@ interface SidebarProps {
   onDeleteChapter: (id: string) => void;
   onDuplicateChapter: (id: string) => void;
   onReorderChapters: (chapters: Chapter[]) => void;
-  isAutocompleteEnabled: boolean;
-  onToggleAutocomplete: () => void;
-  isGrammarCheckEnabled: boolean;
-  onToggleGrammarCheck: () => void;
-  isAutoCorrectEnabled: boolean;
-  onToggleAutoCorrect: () => void;
   isZenModeEnabled: boolean;
   onToggleZenMode: () => void;
   /** First-line indent for body paragraphs in the editor. SMF default ON. */
@@ -196,74 +190,6 @@ const SortableChapter: React.FC<SortableChapterProps> = ({
   );
 };
 
-/**
- * A settings toggle for a built-in feature that a plugin is allowed to take over
- * (manifest `replaces: ["core:grammar"]`).
- *
- * When a plugin owns the feature, core has already stood down — see
- * useCoreFeature — so the switch would be lying about what it controls. Show who
- * owns it now instead of a control that does nothing. We deliberately do NOT
- * write the user's toggle: uninstalling the plugin must give them back exactly
- * the setting they had.
- */
-const ReplaceableToggle: React.FC<{
-  icon: React.ReactNode;
-  label: string;
-  /** The `core:*` capability a plugin can claim via `replaces`. */
-  capability: string;
-  enabled: boolean;
-  onToggle: () => void;
-  isDarkMode: boolean;
-}> = ({ icon, label, capability, enabled, onToggle, isDarkMode }) => {
-  const { installed, shadowedCore } = usePluginHost();
-
-  if (shadowedCore.has(capability)) {
-    const owner = installed.find((p) => p.enabled && p.replaces.includes(capability));
-    return (
-      <div className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm opacity-50">
-        <div className="flex items-center gap-3">
-          {icon}
-          <span className={cn("font-medium", isDarkMode ? "text-white/80" : "text-black/80")}>
-            {label}
-          </span>
-        </div>
-        <span
-          title={`Provided by the ${owner?.name ?? 'installed'} plugin`}
-          className={cn(
-            "text-[9px] uppercase tracking-widest font-bold px-2 py-1 rounded-md whitespace-nowrap",
-            isDarkMode ? "bg-white/10 text-white/60" : "bg-black/5 text-black/50",
-          )}
-        >
-          {owner?.name ?? 'Plugin'}
-        </span>
-      </div>
-    );
-  }
-
-  return (
-    <button
-      onClick={onToggle}
-      className="w-full flex items-center justify-between px-4 py-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-all text-sm group"
-    >
-      <div className="flex items-center gap-3">
-        {icon}
-        <span className={cn("font-medium", isDarkMode ? "text-white/80" : "text-black/80")}>
-          {label}
-        </span>
-      </div>
-      <div className={cn(
-        "w-8 h-4 rounded-full relative transition-colors duration-300",
-        enabled ? "bg-white/20" : "bg-black/10"
-      )}>
-        <div className={cn(
-          "absolute top-1 w-2 h-2 rounded-full transition-all duration-300",
-          enabled ? "bg-white left-5" : "bg-black left-1"
-        )} />
-      </div>
-    </button>
-  );
-};
-
 export const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
   onToggle,
@@ -276,12 +202,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onDeleteChapter,
   onDuplicateChapter,
   onReorderChapters,
-  isAutocompleteEnabled,
-  onToggleAutocomplete,
-  isGrammarCheckEnabled,
-  onToggleGrammarCheck,
-  isAutoCorrectEnabled,
-  onToggleAutoCorrect,
   isZenModeEnabled,
   onToggleZenMode,
   isFirstLineIndentEnabled,
@@ -1092,45 +1012,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <section className="space-y-4">
                       <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold mb-4 opacity-40">Writing</h3>
                       <div className="space-y-4">
-                        <button 
-                          onClick={onToggleAutocomplete}
-                          className="w-full flex items-center justify-between px-4 py-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-all text-sm group"
-                        >
-                          <div className="flex items-center gap-3">
-                            <Book className="w-4 h-4" />
-                            <span className={cn("font-medium", isDarkMode ? "text-white/80" : "text-black/80")}>
-                              Autocomplete
-                            </span>
-                          </div>
-                          <div className={cn(
-                            "w-8 h-4 rounded-full relative transition-colors duration-300",
-                            isAutocompleteEnabled ? "bg-white/20" : "bg-black/10"
-                          )}>
-                            <div className={cn(
-                              "absolute top-1 w-2 h-2 rounded-full transition-all duration-300",
-                              isAutocompleteEnabled ? "bg-white left-5" : "bg-black left-1"
-                            )} />
-                          </div>
-                        </button>
-
-                        <ReplaceableToggle
-                          icon={<SpellCheck className="w-4 h-4" />}
-                          label="Grammar Check"
-                          capability="core:grammar"
-                          enabled={isGrammarCheckEnabled}
-                          onToggle={onToggleGrammarCheck}
-                          isDarkMode={isDarkMode}
-                        />
-
-                        <ReplaceableToggle
-                          icon={<CaseSensitive className="w-4 h-4" />}
-                          label="Autocorrect"
-                          capability="core:autocorrect"
-                          enabled={isAutoCorrectEnabled}
-                          onToggle={onToggleAutoCorrect}
-                          isDarkMode={isDarkMode}
-                        />
-
                         <button 
                           onClick={onToggleZenMode}
                           className="w-full flex items-center justify-between px-4 py-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-all text-sm group"

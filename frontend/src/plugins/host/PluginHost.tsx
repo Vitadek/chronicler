@@ -33,7 +33,7 @@ interface PluginHostValue {
   errors: Record<string, string>;
   isLoading: boolean;
   /**
-   * Built-in features an enabled plugin has replaced (`core:grammar`, …). Core
+   * Built-in features an enabled plugin has replaced (`core:proofreader`, …). Core
    * render sites consult this and stand down — see useCoreFeature.
    */
   shadowedCore: Set<string>;
@@ -63,13 +63,11 @@ export const usePluginHost = (): PluginHostValue => {
 
 /**
  * "Should core still render its built-in <feature>?" — false once a plugin
- * declares `replaces: ["core:grammar"]` and is enabled.
+ * declares `replaces: ["core:proofreader"]` and is enabled.
  *
- *   if (!useCoreFeature('core:grammar')) → the Grammar Check plugin owns this now
+ *   if (!useCoreFeature('core:proofreader')) → the Proofreader plugin owns this now
  *
- * This SHADOWS; it never writes the user's setting. Flipping their
- * `chronicle_grammar_check` toggle off would persist, and uninstalling the
- * plugin later would silently leave them with no grammar checking at all.
+ * This shadows the core surface without rewriting stored user preferences.
  */
 export function useCoreFeature(capability: string): boolean {
   const { shadowedCore } = usePluginHost();

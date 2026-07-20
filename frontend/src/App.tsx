@@ -146,15 +146,6 @@ function AppInner() {
   const [manuscriptFont, setManuscriptFont] = useState(() => {
     return localStorage.getItem('chronicle_manuscript_font') || 'Verdana';
   });
-  const [isAutocompleteEnabled, setIsAutocompleteEnabled] = useState(() => {
-    return localStorage.getItem('chronicle_autocomplete') !== 'false';
-  });
-  const [isGrammarCheckEnabled, setIsGrammarCheckEnabled] = useState(() => {
-    return localStorage.getItem('chronicle_grammar_check') === 'true';
-  });
-  const [isAutoCorrectEnabled, setIsAutoCorrectEnabled] = useState(() => {
-    return localStorage.getItem('chronicle_autocorrect') !== 'false';
-  });
   // A11 (frontend_optimizations.md): checkers hand back a fresh array after
   // every debounced pass, even when the result is unchanged (e.g. still zero
   // findings) — bail out of the state update (and the two extra full-tree
@@ -274,23 +265,9 @@ function AppInner() {
     clearOpenDocument();
   }, [clearOpenDocument]);
 
-  /**
-   * Core features a plugin has taken over (manifest `replaces: ["core:grammar"]`).
-   *
-   * This SHADOWS: while the plugin is enabled, core simply stops rendering its
-   * built-in — but the user's own `chronicle_grammar_check` setting is never
-   * written. Flipping their toggle off would persist, and uninstalling the plugin
-   * later would silently leave them with no grammar checking at all.
-   *
-   * The *_Active values below are what the app actually runs on. The raw
-   * is*Enabled state still drives Global Settings, which greys the toggle out and
-   * says which plugin owns it now.
-   */
   const { shadowedCore } = usePluginHost();
   const coreOn = (capability: string) => !shadowedCore.has(capability);
 
-  const grammarCheckActive = isGrammarCheckEnabled && coreOn('core:grammar');
-  const autoCorrectActive = isAutoCorrectEnabled && coreOn('core:autocorrect');
   const proofreadActive = coreOn('core:proofreader');
 
   // Keep the plugin host's view of the app current. The host sits above this component so plugins survive
@@ -571,18 +548,6 @@ function AppInner() {
   }, [manuscriptFont]);
 
   useEffect(() => {
-    localStorage.setItem('chronicle_autocomplete', isAutocompleteEnabled.toString());
-  }, [isAutocompleteEnabled]);
-
-  useEffect(() => {
-    localStorage.setItem('chronicle_grammar_check', isGrammarCheckEnabled.toString());
-  }, [isGrammarCheckEnabled]);
-
-  useEffect(() => {
-    localStorage.setItem('chronicle_autocorrect', isAutoCorrectEnabled.toString());
-  }, [isAutoCorrectEnabled]);
-
-  useEffect(() => {
     localStorage.setItem('chronicle_zen_mode', isZenModeEnabled.toString());
   }, [isZenModeEnabled]);
 
@@ -610,9 +575,6 @@ function AppInner() {
     scheduleSettingsPush();
   }, [
     isDarkMode,
-    isAutocompleteEnabled,
-    isAutoCorrectEnabled,
-    isGrammarCheckEnabled,
     isZenModeEnabled,
     isFirstLineIndentEnabled,
     touchControlsMode,
@@ -926,12 +888,6 @@ function AppInner() {
           touchControlsMode={touchControlsMode}
           onChangeTouchControls={setTouchControlsMode}
           metadata={metadata}
-          isAutocompleteEnabled={isAutocompleteEnabled}
-          onToggleAutocomplete={() => setIsAutocompleteEnabled(!isAutocompleteEnabled)}
-          isGrammarCheckEnabled={isGrammarCheckEnabled}
-          onToggleGrammarCheck={() => setIsGrammarCheckEnabled(!isGrammarCheckEnabled)}
-          isAutoCorrectEnabled={isAutoCorrectEnabled}
-          onToggleAutoCorrect={() => setIsAutoCorrectEnabled(!isAutoCorrectEnabled)}
           onUpdateMetadata={(newMetadata) => setMetadata(prev => prev ? ({ ...prev, ...newMetadata }) : null)}
           userProfile={userProfile}
           onUpdateUserProfile={(newUserProfile) => setUserProfile(prev => ({ ...prev, ...newUserProfile }))}
@@ -958,9 +914,6 @@ function AppInner() {
               coverArt={metadata.coverArt}
               isSidebarOpen={isSidebarOpen}
               isZenModeEnabled={isZenModeEnabled}
-              isAutocompleteEnabled={isAutocompleteEnabled}
-              isGrammarCheckEnabled={grammarCheckActive}
-              isAutoCorrectEnabled={autoCorrectActive}
               isFirstLineIndentEnabled={isFirstLineIndentEnabled}
               isTouchUI={isTouchUI}
               manuscriptFont={manuscriptFont}

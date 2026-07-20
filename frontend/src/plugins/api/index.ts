@@ -34,10 +34,7 @@ export const PLUGIN_API_VERSION = 4;
 export type HostCapability = 'host:grammar' | 'host:languagetool';
 
 /** Built-in features a plugin can supersede via `replaces`. */
-export type CoreCapability =
-  | 'core:grammar'
-  | 'core:autocorrect'
-  | 'core:proofreader';
+export type CoreCapability = 'core:proofreader';
 
 /**
  * The dependency half of chronicle-plugin.json.
@@ -46,7 +43,7 @@ export type CoreCapability =
  *   "requires":  ["host:languagetool"],   // hard — refuses to enable without it
  *   "wants":     ["checker:style"],        // soft — enables, flagged "limited"
  *   "conflicts": ["checker:grammar"],     // no second grammar checker
- *   "replaces":  ["core:grammar"],        // shadow the built-in while enabled
+ *   "replaces":  ["core:proofreader"],    // shadow the built-in while enabled
  *   "dependencies": { "leven": "^4.0.0" } // npm, installed at build time
  *
  * A plugin implicitly provides its own id, so `requires: ["chronicle.grammarcheck"]`
@@ -169,7 +166,7 @@ export type PluginIcon = React.ComponentType<{ className?: string }>;
 
 /**
  * TipTap extensions merged into every editor the app builds.
- * Unblocks: autocorrect and grammar checks.
+ * Unblocks editor-aware checkers and writing aids.
  */
 export type EditorExtensionsSlot = (ctx: PluginContext) => AnyExtension[];
 

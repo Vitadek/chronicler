@@ -8,7 +8,8 @@ import { EditorContent } from '@tiptap/react';
 import { cn } from '../lib/utils';
 import { Chapter, ManuscriptMetadata } from '../types';
 import { useChronicleEditor } from '../hooks/useChronicleEditor';
-import type { GrammarMark } from '../lib/Grammar';
+import { Grammar, type GrammarMark } from '../lib/Grammar';
+import { ProofreadHighlight } from '../lib/ProofreadHighlight';
 import { addWord, listWords, removeWord } from '../lib/dictionary';
 import { scheduleSettingsPush } from '../lib/settingsSync';
 
@@ -368,26 +369,31 @@ function ProofreadChapter({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const lintedRef = useRef(false);
 
+  // Proofreading owns its checker explicitly. The general Chronicle editor no
+  // longer bundles or runs live grammar checking; this lazy proofread surface
+  // retains the existing non-AI checker and highlight extension.
+  const proofreadExtensions = useMemo(() => [
+    Grammar.configure({
+      enabled: true,
+      onMarks: (marks, reason) => {
+        setGrammarMarks(marks);
+        // 'cleared' fires during the dictionary re-lint bounce, not after a
+        // completed check.
+        if (reason !== 'cleared') {
+          setLinted(true);
+          lintedRef.current = true;
+          setRelinting(false);
+        }
+      },
+    }),
+    ProofreadHighlight,
+  ], []);
+
   const editor = useChronicleEditor({
     content: chapter.content || '<p></p>',
     className: 'novel-editor-content focus:outline-none min-h-[300px]',
     placeholder: ' ',
-    // Proofreading is about the existing text — no ghost-text, no autocorrect
-    // rewriting under the reader's feet.
-    isAutocompleteEnabled: false,
-    isAutoCorrectEnabled: false,
-    isGrammarCheckEnabled: true,
-    onGrammarMarks: (marks, reason) => {
-      setGrammarMarks(marks);
-      // 'cleared' fires when the checker toggles off (e.g. the dictionary
-      // re-lint bounce) — that is NOT a finished lint. Treating it as one
-      // made a fresh chapter flash "clean" until the real result landed.
-      if (reason !== 'cleared') {
-        setLinted(true);
-        lintedRef.current = true;
-        setRelinting(false);
-      }
-    },
+    pluginExtensions: proofreadExtensions,
     onUpdate: (html) => {
       onUpdateContent(html);
       // The Grammar extension re-lints on a debounce after any doc change;
