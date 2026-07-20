@@ -26,6 +26,11 @@ func NewManuscriptsHandler(cfg *config.Config, database *sql.DB) *ManuscriptsHan
 
 func (h *ManuscriptsHandler) Mount(r chi.Router) {
 	r.Get("/", h.list)
+	// Portable per-user archives live with manuscript CRUD. Import is additive
+	// and cannot replace the SQLite database or overwrite an existing record.
+	archive := NewManuscriptArchiveHandler(h.cfg, h.database)
+	r.Get("/archive/export", archive.GetExport)
+	r.Post("/archive/import", archive.PostImport)
 	r.Get("/{id}", h.getOne)
 	r.Post("/", h.create)
 	r.Put("/{id}", h.update)

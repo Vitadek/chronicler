@@ -79,6 +79,13 @@ for (const path of [
 }
 const globalSettings = readFileSync(resolve(root, 'src/components/GlobalSettings.tsx'), 'utf8');
 assert.match(globalSettings, />Chronicler Global Config</);
+for (const archiveControl of ['Manuscript Archive', 'Export .chron', 'Import .chron']) {
+  assert.ok(globalSettings.includes(archiveControl), `${archiveControl} remains available in Global Config`);
+}
+assert.match(globalSettings, /never replaces the database or overwrites an existing manuscript/);
+const archiveService = readFileSync(resolve(root, 'src/services/manuscriptArchiveService.ts'), 'utf8');
+assert.match(archiveService, /\/api\/manuscripts\/archive\/export/);
+assert.match(archiveService, /\/api\/manuscripts\/archive\/import/);
 const manifest = JSON.parse(readFileSync(resolve(root, 'public/manifest.webmanifest'), 'utf8'));
 assert.equal(manifest.name, 'Chronicler');
 assert.equal(manifest.short_name, 'Chronicler');

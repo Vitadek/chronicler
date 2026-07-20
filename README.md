@@ -34,7 +34,9 @@ removed built-in Outline tab.
   art.
 - Provides a responsive manuscript editor with smart typography, comments,
   focus mode, and a formatting-only Bold/Italic/Underline selection toolbar.
-- Imports existing work and exports DOCX, Markdown, HTML, and EPUB3.
+- Imports existing work and exports DOCX, Markdown, HTML, and EPUB3. Global
+  Config also exports/imports the complete manuscript library as a portable,
+  collision-safe, compressed `.chron` archive.
 - Supports revision-aware synchronization and opt-in real-time collaboration.
 - Includes local spelling and grammar infrastructure, a custom dictionary, and
   a guided proofreading workflow.
@@ -59,6 +61,20 @@ The grammar service and `/api/grammar/check` remain available for the
 Proofreader and compatible plugins. Existing documents retain legacy schema
 support, and obsolete settings are ignored without destructively rewriting user
 data.
+
+## Portable manuscript archives
+
+Global Config can download every manuscript and its cover art as a `.chron`
+archive, then add that library to another Chronicler account. The format is a
+versioned file hierarchy using balanced ZIP Deflate rather than a raw SQLite
+copy, so it remains portable across database migrations. Import is additive:
+existing IDs are brought in as clearly named copies and are never overwritten.
+
+The default favors normal interactive export time over XZ's maximum compression.
+A representative 360,000-word regression must stay below 5 MiB before cover art;
+multi-million-word libraries are supported. See [MANUSCRIPT_ARCHIVE.md](MANUSCRIPT_ARCHIVE.md)
+for the format, safety limits, and the TODO for optional Zstandard, XZ, and gzip
+codec plugins.
 
 ## Quick start with Docker
 

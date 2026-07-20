@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, User, Settings, Moon, Sun, Shield, Box, Upload, Trash2, Loader2, Download, Check } from 'lucide-react';
+import { ArrowLeft, User, Settings, Moon, Sun, Shield, FileArchive, Upload, Loader2, Download, Check, CircleAlert } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { UserProfile, ExportSettings, HtmlExportTheme, EpubCoverSource } from '../types';
 import { PluginsPanel } from './PluginsPanel';
 import { MarkdownFrontMatterFields } from './MarkdownFrontMatterFields';
+import { manuscriptArchiveService } from '../services/manuscriptArchiveService';
 
 interface GlobalSettingsProps {
   onClose: () => void;
@@ -25,6 +26,43 @@ export function GlobalSettings({
   exportSettings,
   onUpdateExportSettings,
 }: GlobalSettingsProps) {
+
+  const archiveInputRef = useRef<HTMLInputElement>(null);
+  const [archiveBusy, setArchiveBusy] = useState<'export' | 'import' | null>(null);
+  const [archiveNotice, setArchiveNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
+
+  const exportManuscriptArchive = async () => {
+    setArchiveBusy('export');
+    setArchiveNotice(null);
+    try {
+      await manuscriptArchiveService.exportLibrary();
+      setArchiveNotice({ kind: 'success', message: 'Your portable .chron manuscript archive was downloaded.' });
+    } catch (error) {
+      setArchiveNotice({ kind: 'error', message: error instanceof Error ? error.message : 'The export failed.' });
+    } finally {
+      setArchiveBusy(null);
+    }
+  };
+
+  const importManuscriptArchive = async (file: File) => {
+    setArchiveBusy('import');
+    setArchiveNotice(null);
+    try {
+      const result = await manuscriptArchiveService.importLibrary(file);
+      const copyNote = result.renamed > 0
+        ? ` ${result.renamed} conflicted with existing IDs and were imported as clearly named copies.`
+        : '';
+      setArchiveNotice({
+        kind: 'success',
+        message: `Imported ${result.imported} manuscript${result.imported === 1 ? '' : 's'} and ${result.covers} cover${result.covers === 1 ? '' : 's'}.${copyNote}`,
+      });
+    } catch (error) {
+      setArchiveNotice({ kind: 'error', message: error instanceof Error ? error.message : 'The import failed.' });
+    } finally {
+      setArchiveBusy(null);
+      if (archiveInputRef.current) archiveInputRef.current.value = '';
+    }
+  };
 
   // Section-scoped updaters keep the nested export-settings edits terse.
   const updateHtml = (patch: Partial<ExportSettings['html']>) =>
@@ -79,6 +117,77 @@ export function GlobalSettings({
         <div className="space-y-14">
           {/* Plugins — git-installed, first-class. See PluginsPanel. */}
           <PluginsPanel isDarkMode={isDarkMode} />
+
+          {/* Portable library archive — account-scoped, never a raw database replacement. */}
+          <section className="space-y-6">
+            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-bold opacity-40">
+              <FileArchive className="w-3 h-3" />
+              <span>Manuscript Archive</span>
+            </div>
+            <div className="rounded-2xl border border-black/12 dark:border-white/15 p-5 space-y-5">
+              <div className="space-y-2">
+                <h4 className={cn('text-xs font-bold', isDarkMode ? 'text-white' : 'text-black')}>Portable .chron library</h4>
+                <p className="text-[10px] leading-relaxed opacity-50">
+                  Export every manuscript and its cover art as a versioned file hierarchy compressed with balanced ZIP Deflate.
+                  Prose libraries around 360,000 words are normally well under 5 MB before cover images; multi-million-word
+                  libraries remain supported.
+                </p>
+                <p className="text-[10px] leading-relaxed opacity-40 italic">
+                  Import adds manuscripts to this account. It never replaces the database or overwrites an existing manuscript;
+                  ID conflicts become clearly named imported copies.
+                </p>
+              </div>
+              <input
+                ref={archiveInputRef}
+                type="file"
+                accept=".chron,application/vnd.chronicler.manuscripts+zip"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void importManuscriptArchive(file);
+                }}
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  disabled={archiveBusy !== null}
+                  onClick={() => { void exportManuscriptArchive(); }}
+                  className={cn(
+                    'flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[10px] uppercase font-black tracking-widest transition-all disabled:opacity-40',
+                    isDarkMode ? 'bg-white text-black' : 'bg-black text-white',
+                  )}
+                >
+                  {archiveBusy === 'export' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                  Export .chron
+                </button>
+                <button
+                  type="button"
+                  disabled={archiveBusy !== null}
+                  onClick={() => archiveInputRef.current?.click()}
+                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-black/12 dark:border-white/15 text-[10px] uppercase font-black tracking-widest hover:bg-black/5 dark:hover:bg-white/5 transition-all disabled:opacity-40"
+                >
+                  {archiveBusy === 'import' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                  Import .chron
+                </button>
+              </div>
+              {archiveNotice && (
+                <div
+                  role="status"
+                  className={cn(
+                    'flex items-start gap-2 px-3 py-2.5 rounded-xl border text-[10px] leading-relaxed',
+                    archiveNotice.kind === 'error'
+                      ? 'bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-400'
+                      : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-400',
+                  )}
+                >
+                  {archiveNotice.kind === 'error'
+                    ? <CircleAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    : <Check className="w-3.5 h-3.5 shrink-0 mt-0.5" />}
+                  <span>{archiveNotice.message}</span>
+                </div>
+              )}
+            </div>
+          </section>
 
           {/* Export Defaults Section */}
           <section className="space-y-6">

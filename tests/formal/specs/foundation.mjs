@@ -185,6 +185,14 @@ export async function run() {
       assert.equal(typeof entry.revision, 'number');
     });
 
+    test('portable manuscript archive is an authenticated .chron ZIP download', async () => {
+      const result = await expectStatus('/api/manuscripts/archive/export', 200, { user: alice });
+      assert.match(result.headers.get('content-type') || '', /application\/vnd\.chronicler\.manuscripts\+zip/);
+      assert.match(result.headers.get('content-disposition') || '', /chronicler-manuscripts-\d{4}-\d{2}-\d{2}\.chron/);
+      assert.equal(result.bytes.subarray(0, 4).toString('hex'), '504b0304');
+      assert.ok(result.bytes.length < 5 * 1024 * 1024);
+    });
+
     test('another user cannot list or load Alice manuscripts', async () => {
       const [list, get] = await Promise.all([
         expectStatus('/api/manuscripts', 200, { user: bob }),
