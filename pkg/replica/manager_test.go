@@ -3,7 +3,10 @@ package replica
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"chronicle-server/pkg/config"
 
@@ -15,7 +18,38 @@ type mockProvider struct {
 	deleted map[string]bool
 }
 
-func (p *mockProvider) Name() string { return "mock" }
+type concurrencyProvider struct {
+	mu        sync.Mutex
+	active    int
+	maxActive int
+}
+
+func (p *concurrencyProvider) Name() string                     { return "concurrency" }
+func (p *concurrencyProvider) Initialize(context.Context) error { return nil }
+func (p *concurrencyProvider) Close() error                     { return nil }
+func (p *concurrencyProvider) Head(context.Context, string) (*ReplicaObjectMetadata, error) {
+	return nil, nil
+}
+func (p *concurrencyProvider) Get(context.Context, string) ([]byte, error) { return nil, nil }
+func (p *concurrencyProvider) List(context.Context, string) ([]ReplicaObjectMetadata, error) {
+	return nil, nil
+}
+func (p *concurrencyProvider) Delete(context.Context, string) error { return nil }
+func (p *concurrencyProvider) Put(context.Context, string, []byte, ReplicaPutOptions) error {
+	p.mu.Lock()
+	p.active++
+	if p.active > p.maxActive {
+		p.maxActive = p.active
+	}
+	p.mu.Unlock()
+	time.Sleep(20 * time.Millisecond)
+	p.mu.Lock()
+	p.active--
+	p.mu.Unlock()
+	return nil
+}
+
+func (p *mockProvider) Name() string                         { return "mock" }
 func (p *mockProvider) Initialize(ctx context.Context) error { return nil }
 func (p *mockProvider) Put(ctx context.Context, key string, content []byte, opts ReplicaPutOptions) error {
 	p.puts[key] = content
@@ -96,6 +130,38 @@ func TestBackoff(t *testing.T) {
 		if val > 360000 {
 			t.Errorf("backoff too large for attempt %d: %d", attempt, val)
 		}
+	}
+}
+
+func TestProcessDueBoundsRemoteConcurrency(t *testing.T) {
+	database := initTestDB(t)
+	defer database.Close()
+	provider := &concurrencyProvider{}
+	manager := &Manager{
+		cfg:      &config.Config{Storage: config.StorageConfig{MaxAttempts: 5}},
+		db:       database,
+		provider: provider,
+		keyLocks: make(map[string]chan struct{}),
+		stopChan: make(chan struct{}),
+	}
+	tx, err := database.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 12; i++ {
+		key := fmt.Sprintf("test/%02d", i)
+		if err := EnqueueAtGeneration(tx, key, "put", 1, []byte(key), "text/plain", Sha256([]byte(key))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.ProcessDue(20); err != nil {
+		t.Fatal(err)
+	}
+	if provider.maxActive != processDueConcurrency {
+		t.Fatalf("maximum remote concurrency = %d, want %d", provider.maxActive, processDueConcurrency)
 	}
 }
 

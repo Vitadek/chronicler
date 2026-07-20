@@ -25,6 +25,13 @@ type Manager struct {
 	stopChan chan struct{}
 }
 
+// Replica work is deliberately bounded. A restore or target reconciliation can
+// enqueue hundreds of objects at once; opening one S3/WebDAV request per row
+// creates a connection burst and can make every request time out together.
+// Four workers keep the queue off the request path while providing ample
+// throughput for small manuscript objects.
+const processDueConcurrency = 4
+
 func NewManager(cfg *config.Config, db *sql.DB) (*Manager, error) {
 	var provider ReplicaProvider
 	var err error
@@ -404,16 +411,27 @@ func (m *Manager) ProcessDue(limit int) error {
 	}
 	rows.Close()
 
-	var wg sync.WaitGroup
-	for _, key := range keys {
-		wg.Add(1)
-		go func(k string) {
-			defer wg.Done()
-			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-			_ = m.SyncKey(ctx, k)
-			cancel()
-		}(key)
+	workerCount := processDueConcurrency
+	if len(keys) < workerCount {
+		workerCount = len(keys)
 	}
+	jobs := make(chan string)
+	var wg sync.WaitGroup
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for key := range jobs {
+				ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+				_ = m.SyncKey(ctx, key)
+				cancel()
+			}
+		}()
+	}
+	for _, key := range keys {
+		jobs <- key
+	}
+	close(jobs)
 	wg.Wait()
 	return nil
 }
@@ -948,7 +966,6 @@ func (m *Manager) SeedLocalBlobs() int {
 	_ = tx.Commit()
 	return count
 }
-
 
 // recordInitializePublic lets the CLI record an Initialize outcome. `status`
 // probes the provider before reporting, and that probe is often the first
