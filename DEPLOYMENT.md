@@ -1,8 +1,9 @@
-# Chronicle Go deployment
+# Chronicler deployment
 
 The release image is `forgejo.lan/protoman/chronicle-go:latest`. The immutable
-validated tag from 2026-07-20 is `release-20260720`, digest
-`sha256:9f80ee946a37badb8c97db3e15395af10aa70159b1c72b7ca16ff160c2da5bb5`.
+validated tag from 2026-07-20 is `release-20260720-core-lean`, digest
+`sha256:b40df22c4ccffc047bd0cdfe7622038801f4becf17ce68cb79b5e53fc1f3014a`.
+The legacy registry path remains in use during the Chronicler naming migration.
 
 ## Quick start
 
@@ -42,7 +43,7 @@ docker compose start chronicle
 
 ## Validated release characteristics
 
-- OCI image: 16,542,363 bytes; static Go binary: 29,745,336 bytes.
+- OCI image: 16,237,654 bytes; static Go binary: 28,954,808 bytes.
 - Direct container restart to ready: about 693 ms on the validation host.
 - Warm local readiness and manuscript-list requests: about 0.7 ms average.
 - Complete 97-case destructive formal gate passed, including collaboration,
