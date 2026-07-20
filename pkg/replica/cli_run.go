@@ -340,20 +340,19 @@ func RunCLI(cfg *config.Config, db *sql.DB, manager *Manager, args []string) boo
 		_, _ = db.Exec("PRAGMA wal_checkpoint(PASSIVE)")
 
 		resultSummary := map[string]interface{}{
-			"dryRun":       false,
-			"user":         restoreUserLabel(*user),
-			"manuscripts":  len(plan.Manuscripts),
-			"chapters":     len(plan.Chapters),
-			"profiles":     len(plan.Profiles),
-			"blobs":        len(plan.Blobs),
-			"ignored":      len(plan.Ignored),
-			"conflicts":    len(conflicts),
-			"backupPath":   safetyBackupPath,
-			"cascaded":     applyResult.CascadedChapters,
-			"skipped":      applyResult.SkippedCovers,
-			"database":      map[string]int{"checked": databaseChecked, "enqueued": enqueuedDb},
-			"targetChanged": targetChanged,
-			"manifest":      manifest,
+			"dryRun":           false,
+			"user":             restoreUserLabel(*user),
+			"manuscripts":      len(plan.Manuscripts),
+			"chapters":         len(plan.Chapters),
+			"profiles":         len(plan.Profiles),
+			"blobs":            len(plan.Blobs),
+			"ignored":          len(plan.Ignored),
+			"conflicts":        len(conflicts),
+			"backupPath":       safetyBackupPath,
+			"cascadedChapters": applyResult.CascadedChapters,
+			"skippedCovers":    applyResult.SkippedCovers,
+			"databaseManifest": map[string]int{"checked": databaseChecked, "enqueued": enqueuedDb},
+			"target":           map[string]interface{}{"changed": targetChanged, "seeded": manifest},
 		}
 
 		out, _ := json.MarshalIndent(resultSummary, "", "  ")
