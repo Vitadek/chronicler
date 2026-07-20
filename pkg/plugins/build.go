@@ -184,6 +184,7 @@ func BuildPlugin(pluginsDir string, id string, projectCwd string) (bool, error) 
 		MinifySyntax:      true,
 		External:          SharedExternals,
 		LogLevel:          api.LogLevelSilent,
+		Write:             true,
 		AbsWorkingDir:     dir,
 		NodePaths: []string{
 			filepath.Join(dir, BuildDir, "node_modules"),
