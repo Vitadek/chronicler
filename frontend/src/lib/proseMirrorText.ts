@@ -48,8 +48,7 @@ export function buildPosMap(node: PMNode, paraStart: number): { text: string; po
 
 /**
  * Find the first occurrence of `quote` in the editor document and return its
- * span. Used to map AI-returned exact quotes back to positions (IssuesPane's
- * AI pass, ProofreadView's clarity rows).
+ * span. Retained as a general utility for plugins that map text to positions.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function locateQuote(editor: any, quote: string): { from: number; to: number } | null {

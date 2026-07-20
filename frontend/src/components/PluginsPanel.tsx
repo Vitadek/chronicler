@@ -11,12 +11,9 @@ import type { PluginContext } from '../plugins/api';
 /** `core:grammar` → "Grammar Check", for the "Replaces the built-in …" line. */
 const CORE_FEATURE_NAMES: Record<string, string> = {
   'core:grammar': 'Grammar Check',
-  'core:tense': 'Tense Check',
   'core:autocorrect': 'Autocorrect',
   'core:outliner': 'Outline pane',
   'core:proofreader': 'Proofread mode',
-  'core:thesaurus': 'Thesaurus',
-  'core:issues': 'Issues Panel',
 };
 const coreFeatureName = (cap: string) => CORE_FEATURE_NAMES[cap] ?? cap;
 
@@ -28,9 +25,8 @@ const coreFeatureName = (cap: string) => CORE_FEATURE_NAMES[cap] ?? cap;
  * author's own vocabulary and we have nothing better to call them.
  */
 const HOST_CAPABILITY_NAMES: Record<string, string> = {
-  'host:languagetool': 'the LanguageTool sidecar',
-  'host:ai': 'AI to be configured and enabled',
-  'host:gemini': 'a Gemini API key',
+  'host:grammar': 'the built-in grammar service',
+  'host:languagetool': 'the built-in grammar service',
 };
 const capabilityName = (cap: string) =>
   HOST_CAPABILITY_NAMES[cap] ?? (cap.startsWith('core:') ? `the built-in ${coreFeatureName(cap)}` : `a plugin providing "${cap}"`);
@@ -145,7 +141,7 @@ const PluginsPanelImpl: React.FC<{ isDarkMode: boolean }> = ({ isDarkMode }) => 
       await pluginService.uninstall(p.id);
       await refresh();
     } catch (err) {
-      // Includes the dependency refusal ("Issues Panel depends on it").
+      // Includes dependency refusals naming the dependent plugin.
       setInstallError(err instanceof Error ? err.message : 'Uninstall failed');
     } finally {
       setBusy(null);
@@ -342,9 +338,7 @@ const PluginsPanelImpl: React.FC<{ isDarkMode: boolean }> = ({ isDarkMode }) => 
                   {/* Unmet SOFT requirements: it runs, just not at full strength. */}
                   {p.status.unmetWants.length > 0 && blocked.length === 0 && (
                     <div className="text-[10px] opacity-40 mt-2 leading-relaxed space-y-0.5">
-                      {/* "missing", not "no": the capability names read as noun
-                          phrases ("a Gemini API key"), and "no a Gemini API key"
-                          is what that sentence used to say. */}
+                      {/* Capability names read as noun phrases. */}
                       <p>Limited — missing {p.status.unmetWants.map(capabilityName).join(' and ')}.</p>
                       {(p.unmetWantsReasons ?? []).map((reason) => (
                         <p key={reason}>{reason}</p>

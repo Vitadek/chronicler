@@ -1,24 +1,9 @@
 import { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import type { TenseShiftHit } from './lib/TenseShift';
-import type { GrammarMark } from './lib/Grammar';
 import { LibraryView } from './components/LibraryView';
 import { PluginHost, usePluginHost, usePublishPluginRuntime } from './plugins/host/PluginHost';
 import { PluginViewHost } from './plugins/host/PluginViewHost';
 import { ManuscriptServiceError, manuscriptService } from './services/manuscriptService';
 import { startSync } from './services/syncService';
-import {
-  AiConfig,
-  loadAiConfig,
-  saveAiConfig,
-  clearAiConfig,
-  defaultAiConfig,
-  type AiProvider,
-} from './services/aiConfig';
-import {
-  fetchAiServerConfig,
-  revalidateAiKeys,
-  type ProviderStatus,
-} from './services/aiService';
 import { cn } from './lib/utils';
 import { authService } from './services/authService';
 import { LazyMotion, m } from 'motion/react';
@@ -164,45 +149,24 @@ function AppInner() {
   const [isAutocompleteEnabled, setIsAutocompleteEnabled] = useState(() => {
     return localStorage.getItem('chronicle_autocomplete') !== 'false';
   });
-  const [isTenseCheckEnabled, setIsTenseCheckEnabled] = useState(() => {
-    return localStorage.getItem('chronicle_tense_check') === 'true';
-  });
   const [isGrammarCheckEnabled, setIsGrammarCheckEnabled] = useState(() => {
     return localStorage.getItem('chronicle_grammar_check') === 'true';
   });
   const [isAutoCorrectEnabled, setIsAutoCorrectEnabled] = useState(() => {
     return localStorage.getItem('chronicle_autocorrect') !== 'false';
   });
-  const [isIssuesPanelEnabled, setIsIssuesPanelEnabled] = useState(() => {
-    return localStorage.getItem('chronicle_issues_panel') === 'true';
-  });
-  const [tenseHits, setTenseHits] = useState<TenseShiftHit[]>([]);
-  const [grammarMarks, setGrammarMarks] = useState<GrammarMark[]>([]);
   // A11 (frontend_optimizations.md): checkers hand back a fresh array after
   // every debounced pass, even when the result is unchanged (e.g. still zero
   // findings) — bail out of the state update (and the two extra full-tree
   // re-renders it would cause) when the new set is the same length-zero set
   // as before. A full identity-preserving diff isn't needed for the common
   // "no findings either way" case this targets.
-  const handleTenseShifts = useCallback((hits: TenseShiftHit[]) => {
-    setTenseHits((prev) => (prev.length === 0 && hits.length === 0 ? prev : hits));
-  }, []);
-  const handleGrammarMarks = useCallback((marks: GrammarMark[]) => {
-    setGrammarMarks((prev) => (prev.length === 0 && marks.length === 0 ? prev : marks));
-  }, []);
-  const [isThesaurusEnabled, setIsThesaurusEnabled] = useState(() => {
-    return localStorage.getItem('chronicle_thesaurus') !== 'false';
-  });
   const [isZenModeEnabled, setIsZenModeEnabled] = useState(() => {
     return localStorage.getItem('chronicle_zen_mode') === 'true';
   });
   const [isFirstLineIndentEnabled, setIsFirstLineIndentEnabled] = useState(() => {
     // Default ON — Standard Manuscript Format convention.
     return localStorage.getItem('chronicle_first_line_indent') !== 'false';
-  });
-  const [isAiEnabled, setIsAiEnabled] = useState(() => {
-    // Default OFF — opt-in. Users who want AI flip it on in Settings.
-    return localStorage.getItem('chronicle_ai_enabled') === 'true';
   });
   // Per-format export preferences (HTML theme, Hugo markdown front matter,
   // EPUB rights/cover). Merged over defaults so a stored partial from an older
@@ -257,73 +221,6 @@ function AppInner() {
   useEffect(() => {
     document.documentElement.classList.toggle('touch-ui', isTouchUI);
   }, [isTouchUI]);
-
-  const [isAiBubbleMenuEnabled, setIsAiBubbleMenuEnabled] = useState(() => {
-    return localStorage.getItem('chronicle_ai_bubble_menu') === 'true';
-  });
-
-  /**
-   * The single source of truth for AI: provider, key, current model, and
-   * the user's custom-model lists. Null until the user fills in the wizard
-   * (or, before they do, with `isAiEnabled=false` we never call the proxy
-   * anyway). Persisted in localStorage by saveAiConfig().
-   */
-  const [aiConfig, setAiConfigState] = useState<AiConfig | null>(() => loadAiConfig());
-  const updateAiConfig = useCallback((next: AiConfig | null) => {
-    setAiConfigState(next);
-    if (next) saveAiConfig(next);
-    else clearAiConfig();
-  }, []);
-
-  /**
-   * Server probe: which AI providers does the backend have keys for? Falls
-   * back to undefined while in flight; the Settings panel treats that as
-   * "assume available" (no warning UI). Updated on mount and refreshable
-   * via Settings → Re-check.
-   */
-  const [serverAiProviders, setServerAiProviders] = useState<Partial<Record<AiProvider, ProviderStatus>> | undefined>(undefined);
-  const [serverAiAvailable, setServerAiAvailable] = useState<boolean | undefined>(undefined);
-  // AI_UI=off on the server strips every AI surface from the UI (a "purist"
-  // deployment). Seeded from the last server answer so an AI_UI=off install
-  // doesn't flash AI UI while /api/ai/config is in flight, and doesn't fail
-  // open if that one request hiccups. First-ever visit defaults to visible.
-  const [isAiUiHidden, setIsAiUiHidden] = useState(() => {
-    return localStorage.getItem('chronicle_ai_ui_hidden') === 'true';
-  });
-
-  const loadAiServerConfig = useCallback(async () => {
-    const cfg = await fetchAiServerConfig();
-    if (!cfg) return;
-    // `=== false` (not `!uiEnabled`): older servers omit the field entirely,
-    // and they must keep defaulting to visible.
-    const hidden = cfg.uiEnabled === false;
-    setIsAiUiHidden(hidden);
-    localStorage.setItem('chronicle_ai_ui_hidden', String(hidden));
-    setServerAiProviders(cfg.providers);
-    // "AI available" = at least one provider is configured AND its key
-    // either passed validation or hasn't been checked yet.
-    const usable = (Object.values(cfg.providers) as ProviderStatus[]).some(
-      (p) => p.configured && (p.state === 'ok' || p.state === 'unchecked'),
-    );
-    setServerAiAvailable(usable);
-  }, []);
-
-  useEffect(() => {
-    void loadAiServerConfig();
-  }, [loadAiServerConfig]);
-
-  const handleRevalidateAi = useCallback(async () => {
-    await revalidateAiKeys();
-    await loadAiServerConfig();
-  }, [loadAiServerConfig]);
-
-  // AI outline output — renders inside the sidebar's Outline pane rather
-  // than the editor's overlay. Persisted to localStorage so the author can
-  // refer back to it across sessions while working on the same manuscript.
-  const [aiOutlineMarkdown, setAiOutlineMarkdown] = useState<string>(() => {
-    return localStorage.getItem('chronicle_ai_outline') || '';
-  });
-  const [isAiOutlineLoading, setIsAiOutlineLoading] = useState(false);
 
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     const saved = localStorage.getItem('chronicle_user_profile');
@@ -405,23 +302,16 @@ function AppInner() {
   const coreOn = (capability: string) => !shadowedCore.has(capability);
 
   const grammarCheckActive = isGrammarCheckEnabled && coreOn('core:grammar');
-  const tenseCheckActive = isTenseCheckEnabled && coreOn('core:tense');
   const autoCorrectActive = isAutoCorrectEnabled && coreOn('core:autocorrect');
-  const issuesPanelActive = isIssuesPanelEnabled && coreOn('core:issues');
-  const thesaurusActive = isThesaurusEnabled && coreOn('core:thesaurus');
   const proofreadActive = coreOn('core:proofreader');
   const outlinerActive = coreOn('core:outliner');
 
-  // Keep the plugin host's view of the app current (editor, open manuscript, AI
-  // availability). The host sits above this component so plugins survive
+  // Keep the plugin host's view of the app current. The host sits above this component so plugins survive
   // navigation; this is how it sees our live state.
   usePublishPluginRuntime({
     manuscriptId: currentManuscriptId,
     editor: activeEditor,
-    aiConfig,
-    aiAvailable: isAiEnabled && !!aiConfig && !isAiUiHidden,
     onToast: (message) => {
-      // No toast system yet; the editor's AI overlay is the closest surface.
       console.info('[plugin]', message);
     },
   });
@@ -677,10 +567,6 @@ function AppInner() {
       setPlotEdges(e ? JSON.parse(e) : []);
     } catch { setPlotEdges([]); }
 
-    // Reset the AI outline when switching books — the outline is per-manuscript,
-    // not per-session.
-    setAiOutlineMarkdown('');
-    setIsAiOutlineLoading(false);
     // NOTE: deliberately not depending on remoteRevision. Reloading the
     // currently-open manuscript on every sync tick would clobber in-progress
     // edits the user hasn't auto-saved yet. The library view does react to
@@ -717,30 +603,12 @@ function AppInner() {
   }, [isAutocompleteEnabled]);
 
   useEffect(() => {
-    localStorage.setItem('chronicle_tense_check', isTenseCheckEnabled.toString());
-  }, [isTenseCheckEnabled]);
-
-  useEffect(() => {
     localStorage.setItem('chronicle_grammar_check', isGrammarCheckEnabled.toString());
   }, [isGrammarCheckEnabled]);
 
   useEffect(() => {
     localStorage.setItem('chronicle_autocorrect', isAutoCorrectEnabled.toString());
   }, [isAutoCorrectEnabled]);
-
-  useEffect(() => {
-    localStorage.setItem('chronicle_issues_panel', isIssuesPanelEnabled.toString());
-  }, [isIssuesPanelEnabled]);
-
-  // Findings are position-keyed to the open chapter's editor; clear on switch.
-  useEffect(() => {
-    setTenseHits([]);
-    setGrammarMarks([]);
-  }, [currentChapterId, currentManuscriptId]);
-
-  useEffect(() => {
-    localStorage.setItem('chronicle_thesaurus', isThesaurusEnabled.toString());
-  }, [isThesaurusEnabled]);
 
   useEffect(() => {
     localStorage.setItem('chronicle_zen_mode', isZenModeEnabled.toString());
@@ -751,16 +619,8 @@ function AppInner() {
   }, [isFirstLineIndentEnabled]);
 
   useEffect(() => {
-    localStorage.setItem('chronicle_ai_enabled', isAiEnabled.toString());
-  }, [isAiEnabled]);
-
-  useEffect(() => {
     localStorage.setItem('chronicle_export_settings', JSON.stringify(exportSettings));
   }, [exportSettings]);
-
-  useEffect(() => {
-    localStorage.setItem('chronicle_ai_bubble_menu', isAiBubbleMenuEnabled.toString());
-  }, [isAiBubbleMenuEnabled]);
 
   // Outline-pane persistence. Stored per-manuscript so each book has its
   // own cast and plot graph. Only write when a manuscript is open so we
@@ -883,14 +743,6 @@ function AppInner() {
   }, []);
 
   useEffect(() => {
-    if (aiOutlineMarkdown) {
-      localStorage.setItem('chronicle_ai_outline', aiOutlineMarkdown);
-    } else {
-      localStorage.removeItem('chronicle_ai_outline');
-    }
-  }, [aiOutlineMarkdown]);
-
-  useEffect(() => {
     localStorage.setItem('chronicle_theme', isDarkMode ? 'dark' : 'light');
     const root = window.document.documentElement;
     if (isDarkMode) root.classList.add('dark');
@@ -908,14 +760,9 @@ function AppInner() {
     isDarkMode,
     isAutocompleteEnabled,
     isAutoCorrectEnabled,
-    isTenseCheckEnabled,
     isGrammarCheckEnabled,
-    isIssuesPanelEnabled,
-    isThesaurusEnabled,
     isZenModeEnabled,
     isFirstLineIndentEnabled,
-    isAiEnabled,
-    isAiBubbleMenuEnabled,
     touchControlsMode,
     manuscriptFont,
     exportSettings,
@@ -1144,21 +991,6 @@ function AppInner() {
             onToggleTheme={() => setIsDarkMode(!isDarkMode)}
             userProfile={userProfile}
             onUpdateUserProfile={(newUserProfile) => setUserProfile(prev => ({ ...prev, ...newUserProfile }))}
-            isAiEnabled={isAiEnabled}
-            onToggleAiEnabled={() => {
-              const turningOn = !isAiEnabled;
-              setIsAiEnabled(turningOn);
-              if (turningOn && !aiConfig) {
-                updateAiConfig(defaultAiConfig());
-              }
-            }}
-            aiConfig={aiConfig}
-            onUpdateAiConfig={updateAiConfig}
-            isAiBubbleMenuEnabled={isAiBubbleMenuEnabled}
-            onToggleAiBubbleMenu={() => setIsAiBubbleMenuEnabled(!isAiBubbleMenuEnabled)}
-            isAiUiHidden={isAiUiHidden}
-            serverAiProviders={serverAiProviders}
-            onRevalidateAi={handleRevalidateAi}
             exportSettings={exportSettings}
             onUpdateExportSettings={setExportSettings}
           />
@@ -1195,7 +1027,6 @@ function AppInner() {
           metadata={metadata}
           chapters={chapters}
           isDarkMode={isDarkMode}
-          aiAvailable={isAiEnabled && !!aiConfig && !isAiUiHidden}
           onUpdateChapter={(chapterId, content) => {
             setChapters(prev => prev.map(c => c.id === chapterId ? { ...c, content, lastModified: Date.now() } : c));
           }}
@@ -1240,31 +1071,10 @@ function AppInner() {
           onReorderChapters={handleReorderChapters}
           manuscriptFont={manuscriptFont}
           onChangeFont={setManuscriptFont}
-          isThesaurusEnabled={isThesaurusEnabled}
-          onToggleThesaurus={() => setIsThesaurusEnabled(!isThesaurusEnabled)}
           isZenModeEnabled={isZenModeEnabled}
           onToggleZenMode={() => setIsZenModeEnabled(!isZenModeEnabled)}
           isFirstLineIndentEnabled={isFirstLineIndentEnabled}
           onToggleFirstLineIndent={() => setIsFirstLineIndentEnabled(!isFirstLineIndentEnabled)}
-          isAiEnabled={isAiEnabled}
-          onToggleAiEnabled={() => {
-            const turningOn = !isAiEnabled;
-            setIsAiEnabled(turningOn);
-            // Seed a default config so the editor doesn't see `isAiEnabled
-            // && !!aiConfig` flip false on the first toggle. The user can
-            // then change provider/model in Settings without first having
-            // to fill anything in.
-            if (turningOn && !aiConfig) {
-              updateAiConfig(defaultAiConfig());
-            }
-          }}
-          aiConfig={aiConfig}
-          onUpdateAiConfig={updateAiConfig}
-          serverAiProviders={serverAiProviders}
-          onRevalidateAi={handleRevalidateAi}
-          isAiBubbleMenuEnabled={isAiBubbleMenuEnabled}
-          onToggleAiBubbleMenu={() => setIsAiBubbleMenuEnabled(!isAiBubbleMenuEnabled)}
-          isAiUiHidden={isAiUiHidden}
           touchControlsMode={touchControlsMode}
           onChangeTouchControls={setTouchControlsMode}
           metadata={metadata}
@@ -1276,16 +1086,10 @@ function AppInner() {
           currentChapterContent={isSidebarOpen ? currentChapter.content : ''}
           isAutocompleteEnabled={isAutocompleteEnabled}
           onToggleAutocomplete={() => setIsAutocompleteEnabled(!isAutocompleteEnabled)}
-          isTenseCheckEnabled={isTenseCheckEnabled}
-          onToggleTenseCheck={() => setIsTenseCheckEnabled(!isTenseCheckEnabled)}
           isGrammarCheckEnabled={isGrammarCheckEnabled}
           onToggleGrammarCheck={() => setIsGrammarCheckEnabled(!isGrammarCheckEnabled)}
           isAutoCorrectEnabled={isAutoCorrectEnabled}
           onToggleAutoCorrect={() => setIsAutoCorrectEnabled(!isAutoCorrectEnabled)}
-          isIssuesPanelEnabled={isIssuesPanelEnabled}
-          onToggleIssuesPanel={() => setIsIssuesPanelEnabled(!isIssuesPanelEnabled)}
-          tenseHits={tenseHits}
-          grammarMarks={grammarMarks}
           onUpdateMetadata={(newMetadata) => setMetadata(prev => prev ? ({ ...prev, ...newMetadata }) : null)}
           userProfile={userProfile}
           onUpdateUserProfile={(newUserProfile) => setUserProfile(prev => ({ ...prev, ...newUserProfile }))}
@@ -1293,9 +1097,6 @@ function AppInner() {
           onReturnToLibrary={() => { void leaveManuscript(); }}
           manuscriptWordCount={totalWordCount}
           exportSettings={exportSettings}
-          aiOutlineMarkdown={aiOutlineMarkdown}
-          isAiOutlineLoading={isAiOutlineLoading}
-          onClearAiOutline={() => setAiOutlineMarkdown('')}
           editor={activeEditor}
           characters={characters}
           plotNodes={plotNodes}
@@ -1325,19 +1126,13 @@ function AppInner() {
               chapterId={currentChapter.id}
               isTitlePage={isTitlePage}
               coverArt={metadata.coverArt}
-              isSidebarOpen={isSidebarOpen}              isThesaurusEnabled={thesaurusActive}
+              isSidebarOpen={isSidebarOpen}
               isZenModeEnabled={isZenModeEnabled}
               isAutocompleteEnabled={isAutocompleteEnabled}
-              isTenseCheckEnabled={tenseCheckActive}
               isGrammarCheckEnabled={grammarCheckActive}
               isAutoCorrectEnabled={autoCorrectActive}
-              onTenseShifts={handleTenseShifts}
-              onGrammarMarks={handleGrammarMarks}
               isFirstLineIndentEnabled={isFirstLineIndentEnabled}
-              isAiEnabled={isAiEnabled && !!aiConfig && !isAiUiHidden}
-              isAiBubbleMenuEnabled={isAiBubbleMenuEnabled}
               isTouchUI={isTouchUI}
-              aiConfig={aiConfig}
               manuscriptFont={manuscriptFont}
               sceneBreakStyle={metadata.sceneBreakStyle || 'classic'}
               customSceneBreakSvg={metadata.customSceneBreakSvg}
@@ -1345,13 +1140,6 @@ function AppInner() {
               content={currentChapter.content}
               lastModified={currentChapter.lastModified}
               onUpdate={handleUpdateChapterContent}
-              onAiOutlineResult={(md) => {
-                setAiOutlineMarkdown(md);
-                // Pop the sidebar open so the new outline is visible. If the
-                // author already had it open we leave their view alone.
-                if (!isSidebarOpen) setIsSidebarOpen(true);
-              }}
-              onAiOutlineLoadingChange={setIsAiOutlineLoading}
               onEditorReady={setActiveEditor}
             />
           </m.div>

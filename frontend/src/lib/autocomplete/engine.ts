@@ -1,6 +1,6 @@
 // The completion engine behind lib/Autocomplete.ts — pure data + scoring, no
 // ProseMirror, so scripts/verify-autocomplete.ts can exercise it directly
-// (same layering as lib/tense/detect.ts under lib/TenseShift.ts).
+// Kept separate from the TipTap extension so it is straightforward to test.
 //
 // Candidates come from two sources, blended:
 //

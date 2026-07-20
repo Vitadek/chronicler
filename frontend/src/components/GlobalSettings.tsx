@@ -1,11 +1,8 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, User, Settings, Moon, Sun, Shield, Sparkles, Box, Upload, Trash2, Loader2, Download, Check } from 'lucide-react';
+import { ArrowLeft, User, Settings, Moon, Sun, Shield, Box, Upload, Trash2, Loader2, Download, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { UserProfile, ExportSettings, HtmlExportTheme, EpubCoverSource } from '../types';
-import { AiConfig, AiProvider } from '../services/aiConfig';
-import { ProviderStatus } from '../services/aiService';
-import { AiSettingsPanel } from './AiSettingsPanel';
 import { PluginsPanel } from './PluginsPanel';
 import { MarkdownFrontMatterFields } from './MarkdownFrontMatterFields';
 
@@ -15,16 +12,6 @@ interface GlobalSettingsProps {
   onToggleTheme: () => void;
   userProfile: UserProfile;
   onUpdateUserProfile: (profile: Partial<UserProfile>) => void;
-  isAiEnabled: boolean;
-  onToggleAiEnabled: () => void;
-  aiConfig: AiConfig | null;
-  onUpdateAiConfig: (cfg: AiConfig | null) => void;
-  isAiBubbleMenuEnabled: boolean;
-  onToggleAiBubbleMenu: () => void;
-  /** Server AI_UI=off: render no AI section at all. */
-  isAiUiHidden?: boolean;
-  serverAiProviders?: Partial<Record<AiProvider, ProviderStatus>>;
-  onRevalidateAi?: () => Promise<void> | void;
   exportSettings: ExportSettings;
   onUpdateExportSettings: (settings: ExportSettings) => void;
 }
@@ -35,15 +22,6 @@ export function GlobalSettings({
   onToggleTheme,
   userProfile,
   onUpdateUserProfile,
-  isAiEnabled,
-  onToggleAiEnabled,
-  aiConfig,
-  onUpdateAiConfig,
-  isAiBubbleMenuEnabled,
-  onToggleAiBubbleMenu,
-  isAiUiHidden,
-  serverAiProviders,
-  onRevalidateAi,
   exportSettings,
   onUpdateExportSettings,
 }: GlobalSettingsProps) {
@@ -252,27 +230,6 @@ export function GlobalSettings({
               </div>
             </button>
           </section>
-
-          {/* AI Section — absent entirely when the server sets AI_UI=off */}
-          {!isAiUiHidden && (
-            <section className="space-y-6">
-              <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-bold opacity-40">
-                <Sparkles className="w-3 h-3" />
-                <span>AI Capabilities</span>
-              </div>
-              <AiSettingsPanel
-                isDarkMode={isDarkMode}
-                isAiEnabled={isAiEnabled}
-                onToggleAiEnabled={onToggleAiEnabled}
-                aiConfig={aiConfig}
-                onUpdateAiConfig={onUpdateAiConfig}
-                isAiBubbleMenuEnabled={isAiBubbleMenuEnabled}
-                onToggleAiBubbleMenu={onToggleAiBubbleMenu}
-                serverProviders={serverAiProviders}
-                onRevalidate={onRevalidateAi}
-              />
-            </section>
-          )}
 
           {/* Security/Sync Note */}
           <section className="pt-8 border-t border-black/12 dark:border-white/15">

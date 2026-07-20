@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { List, Sparkles, Network, Users, MessageSquare, ExternalLink, PanelRightClose, FileText, AlignLeft } from 'lucide-react';
+import { List, Network, Users, MessageSquare, ExternalLink, PanelRightClose, FileText, AlignLeft } from 'lucide-react';
 import type { Editor } from '@tiptap/react';
 import { cn } from '../lib/utils';
 import { Chapter, Character, PlotNode, PlotEdge } from '../types';
-import { MarkdownRenderer } from './MarkdownRenderer';
 import { CharacterSheet, DEFAULT_CHARACTER_PALETTE } from './CharacterSheet';
 import { PlotCanvas } from './PlotCanvas';
 import { CommentsPanel } from './CommentsPanel';
@@ -20,10 +19,6 @@ interface OutlinePaneProps {
   // Structural headings
   headings: Array<{ id: string; text: string; level: number }>;
   onHeadingClick: (text: string, level: number) => void;
-  // AI outline
-  aiOutlineMarkdown?: string;
-  isAiOutlineLoading?: boolean;
-  onClearAiOutline?: () => void;
   // Plot + characters
   characters: Character[];
   plotNodes: PlotNode[];
@@ -44,7 +39,7 @@ interface OutlinePaneProps {
 
 /**
  * Outline pane container. Houses five subtabs:
- *  - Outline (Synopsis): Manual high-level outline + optional AI version
+ *  - Outline (Synopsis): Manual high-level project outline
  *  - Navigation (Structure): chapter / heading list (jumps editor selection)
  *  - Plot: drag-and-drop event graph
  *  - Cast (Characters): list of character cards; click to open the full sheet
@@ -108,11 +103,6 @@ export const OutlinePane: React.FC<OutlinePaneProps> = (props) => {
             />
           </div>
 
-          {(props.aiOutlineMarkdown || props.isAiOutlineLoading) && (
-            <div className="pt-4 border-t border-current/5">
-              <AiView {...props} />
-            </div>
-          )}
         </div>
       );
     }
@@ -300,64 +290,6 @@ const StructureView: React.FC<OutlinePaneProps> = ({ headings, onHeadingClick, i
     </div>
   );
 };
-
-const AiView: React.FC<OutlinePaneProps> = ({
-  isDarkMode, aiOutlineMarkdown, isAiOutlineLoading, onClearAiOutline,
-}) => (
-  <div className="flex-1 overflow-y-auto pr-1 mt-2 space-y-3">
-    {isAiOutlineLoading && (
-      <div className="px-2 space-y-3 animate-pulse">
-        <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-bold opacity-40">
-          <Sparkles className="w-3 h-3" />
-          <span>Generating outline...</span>
-        </div>
-        <div className="space-y-2">
-          <div className="h-3 bg-current/5 rounded w-3/4" />
-          <div className="h-3 bg-current/5 rounded w-1/2" />
-          <div className="h-3 bg-current/5 rounded w-2/3" />
-        </div>
-      </div>
-    )}
-    {!isAiOutlineLoading && aiOutlineMarkdown && (
-      <>
-        <div className="flex items-center justify-between px-2">
-          <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-bold opacity-40">
-            <Sparkles className="w-3 h-3" />
-            <span>AI Outline</span>
-          </div>
-          {onClearAiOutline && (
-            <button
-              onClick={onClearAiOutline}
-              className="text-[9px] uppercase tracking-widest opacity-30 hover:opacity-100 transition-opacity"
-              title="Clear AI outline"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-        <div className={cn(
-          'px-3 py-3 rounded-xl border text-xs leading-relaxed',
-          isDarkMode ? 'bg-white/[0.02] border-white/15' : 'bg-black/[0.02] border-black/12',
-        )}>
-          <MarkdownRenderer
-            text={aiOutlineMarkdown}
-            className="font-roboto"
-            theme={isDarkMode ? 'dark' : 'light'}
-            compact
-          />
-        </div>
-      </>
-    )}
-    {!isAiOutlineLoading && !aiOutlineMarkdown && (
-      <div className="h-40 flex flex-col items-center justify-center text-center px-8">
-        <p className="text-[10px] uppercase tracking-widest font-bold opacity-20">No AI outline yet</p>
-        <p className="text-[10px] opacity-20 mt-2">
-          Run <span className="font-mono">#!/ai_outline</span> in the editor to generate one.
-        </p>
-      </div>
-    )}
-  </div>
-);
 
 interface CharactersListProps {
   characters: Character[];

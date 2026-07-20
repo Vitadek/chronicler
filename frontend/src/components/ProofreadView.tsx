@@ -2,15 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, SpellCheck, BookMarked, List as ListIcon,
-  Sparkles, Loader2, CheckCircle2, X, Trash2, Plus, Check,
+  Loader2, CheckCircle2, X, Trash2, Plus, Check,
 } from 'lucide-react';
 import { EditorContent } from '@tiptap/react';
 import { cn } from '../lib/utils';
 import { Chapter, ManuscriptMetadata } from '../types';
 import { useChronicleEditor } from '../hooks/useChronicleEditor';
 import type { GrammarMark } from '../lib/Grammar';
-import { locateQuote, buildPosMap } from '../lib/proseMirrorText';
-import { aiClarityPass } from '../services/grammarAiService';
 import { addWord, listWords, removeWord } from '../lib/dictionary';
 import { scheduleSettingsPush } from '../lib/settingsSync';
 
@@ -18,18 +16,16 @@ interface ProofreadViewProps {
   metadata: ManuscriptMetadata;
   chapters: Chapter[];
   isDarkMode: boolean;
-  /** AI enabled + configured + not hidden by AI_UI=off. Gates the clarity pass. */
-  aiAvailable: boolean;
   onUpdateChapter: (chapterId: string, content: string) => void;
   onExit: () => void;
 }
 
-type IssueSource = 'spelling' | 'grammar' | 'clarity';
+type IssueSource = 'spelling' | 'grammar';
 
 interface Issue {
   key: string;
   source: IssueSource;
-  /** Doc positions; clarity rows relocate by quote at jump time. */
+  /** Current ProseMirror document positions. */
   from: number | null;
   to: number | null;
   text: string;
@@ -40,18 +36,14 @@ interface Issue {
 const SOURCE_META: Record<IssueSource, { label: string; badge: string }> = {
   spelling: { label: 'Spelling', badge: 'bg-red-500/15 text-red-500' },
   grammar: { label: 'Grammar', badge: 'bg-amber-500/15 text-amber-600 dark:text-amber-400' },
-  clarity: { label: 'Clarity', badge: 'bg-purple-500/15 text-purple-500' },
 };
 
 /**
  * Proofread mode: a guided revision pass over one manuscript.
  *
  * Walks the writer through issues one at a time — spelling + grammar from the
- * live LanguageTool pipeline, plus an on-demand AI clarity pass that flags
- * clunky/unclear wording. HARD RULE: clarity rows carry no rewrites, only an
- * explanation of why a passage may read unclear (the endpoint's schema has no
- * suggestion field). Spelling rows DO offer LanguageTool's dictionary
- * corrections as one-click fixes.
+ * built-in grammar pipeline. Spelling rows offer dictionary corrections as
+ * one-click fixes.
  *
  * The issue card is a popup ANCHORED to the flagged text: walking the queue
  * scrolls the passage into view, tints it (ProofreadHighlight — decoration,
@@ -66,7 +58,6 @@ export function ProofreadView({
   metadata,
   chapters,
   isDarkMode,
-  aiAvailable,
   onUpdateChapter,
   onExit,
 }: ProofreadViewProps) {
@@ -194,7 +185,6 @@ export function ProofreadView({
           chapter={chapter}
           chapterLabel={chapter.title || `Chapter ${chapterIndex + 1}`}
           isDarkMode={isDarkMode}
-          aiAvailable={aiAvailable}
           showList={showList}
           dictVersion={dictVersion}
           onDictionaryAdd={(word) => {
@@ -334,7 +324,6 @@ interface ProofreadChapterProps {
   chapter: Chapter;
   chapterLabel: string;
   isDarkMode: boolean;
-  aiAvailable: boolean;
   showList: boolean;
   dictVersion: number;
   onDictionaryAdd: (word: string) => void;
@@ -347,7 +336,6 @@ function ProofreadChapter({
   chapter,
   chapterLabel,
   isDarkMode,
-  aiAvailable,
   showList,
   dictVersion,
   onDictionaryAdd,
@@ -356,10 +344,6 @@ function ProofreadChapter({
   onNextChapter,
 }: ProofreadChapterProps) {
   const [grammarMarks, setGrammarMarks] = useState<GrammarMark[]>([]);
-  const [clarityIssues, setClarityIssues] = useState<{ quote: string; message: string }[]>([]);
-  const [clarityRan, setClarityRan] = useState(false);
-  const [clarityLoading, setClarityLoading] = useState(false);
-  const [clarityError, setClarityError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
   const [currentKey, setCurrentKey] = useState<string | null>(null);
   // Issues the user actively dealt with (fix applied, ignored, added to
@@ -371,10 +355,6 @@ function ProofreadChapter({
   const [relinting, setRelinting] = useState(false);
   // Popup anchor: offset from the top of the prose wrapper, in px.
   const [popupTop, setPopupTop] = useState<number | null>(null);
-  // Bumped on every editor doc change (onUpdate) so clarityLocs recomputes
-  // without depending on editor identity, which stays stable across the
-  // chapter's edits.
-  const [docVersion, setDocVersion] = useState(0);
   // How many issues to render per source in the side list. A full manuscript can
   // surface 1,000+ issues; rendering them all as buttons janks the sidebar, and
   // the walk is sequential anyway — so cap each group and reveal more on demand.
@@ -382,7 +362,6 @@ function ProofreadChapter({
   const [visibleCounts, setVisibleCounts] = useState<Record<IssueSource, number>>({
     spelling: LIST_PAGE,
     grammar: LIST_PAGE,
-    clarity: LIST_PAGE,
   });
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -414,7 +393,6 @@ function ProofreadChapter({
       // The Grammar extension re-lints on a debounce after any doc change;
       // reflect that in the UI so a fix visibly "rechecks".
       setRelinting(true);
-      setDocVersion((v) => v + 1);
     },
   });
 
@@ -442,35 +420,8 @@ function ProofreadChapter({
   const issueKey = (source: IssueSource, text: string, message: string) =>
     `${source}|${text}|${message}`;
 
-  // Locate every clarity quote in ONE full-doc pass, memoized separately from
-  // `dismissed` (which changes on every Ignore/Done/fix click). Before this,
-  // the queue below ran a full-chapter locateQuote walk PER clarity issue on
-  // every recompute — including every dismissal, which never actually moves
-  // clarity spans.
-  const clarityLocs = useMemo(() => {
-    const pending = new Map<string, { from: number; to: number } | null>(
-      clarityIssues.map((c) => [c.quote, null]),
-    );
-    if (!editor || editor.isDestroyed || clarityIssues.length === 0) return pending;
-    editor.state.doc.descendants((node, pos) => {
-      if (!node.isTextblock) return;
-      if (![...pending.values()].includes(null)) return false;
-      const { text, posAt } = buildPosMap(node, pos + 1);
-      for (const [q, loc] of pending) {
-        if (loc === null) {
-          const idx = text.indexOf(q);
-          if (idx >= 0) {
-            pending.set(q, { from: posAt[idx], to: posAt[Math.min(idx + q.length, posAt.length - 1)] });
-          }
-        }
-      }
-    });
-    return pending;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, clarityIssues, docVersion]);
-
-  // The walk queue: grammar marks (split spelling vs grammar) + located
-  // clarity rows, in document order, minus dismissals.
+  // The walk queue: grammar marks split into spelling and grammar, in document
+  // order, minus dismissals.
   const queue = useMemo<Issue[]>(() => {
     const rows: Issue[] = [];
     for (const m of grammarMarks) {
@@ -479,16 +430,10 @@ function ProofreadChapter({
       if (dismissed.has(key)) continue;
       rows.push({ key, source, from: m.from, to: m.to, text: m.text, message: m.message, replacements: m.replacements });
     }
-    for (const c of clarityIssues) {
-      const key = issueKey('clarity', c.quote, c.message);
-      if (dismissed.has(key)) continue;
-      const loc = clarityLocs.get(c.quote) ?? null;
-      rows.push({ key, source: 'clarity', from: loc?.from ?? null, to: loc?.to ?? null, text: c.quote, message: c.message });
-    }
     rows.sort((a, b) => (a.from ?? Number.MAX_SAFE_INTEGER) - (b.from ?? Number.MAX_SAFE_INTEGER));
     return rows;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grammarMarks, clarityIssues, dismissed, clarityLocs]);
+  }, [grammarMarks, dismissed]);
 
   const currentIndex = Math.max(0, queue.findIndex((r) => r.key === currentKey));
   const current = queue[currentIndex] ?? null;
@@ -505,13 +450,11 @@ function ProofreadChapter({
     }
   }, [queue, currentKey]);
 
-  /** Resolve the doc span for an issue (clarity relocates via clarityLocs,
-      the one-pass map built above — no more per-call doc walks). */
+  /** Resolve the current document span for an issue. */
   const spanFor = useCallback((issue: Issue): { from: number; to: number } | null => {
     if (!editor || editor.isDestroyed) return null;
-    if (issue.source === 'clarity') return clarityLocs.get(issue.text) ?? null;
     return issue.from != null && issue.to != null ? { from: issue.from, to: issue.to } : null;
-  }, [editor, clarityLocs]);
+  }, [editor]);
 
   /**
    * Anchor the walk to an issue: tint the span (decoration — never focuses,
@@ -653,29 +596,6 @@ function ProofreadChapter({
     resolve(keys);
   };
 
-  const runClarity = async () => {
-    if (!editor || editor.isDestroyed) return;
-    setClarityLoading(true);
-    setClarityError(null);
-    try {
-      const issues = await aiClarityPass(editor.state.doc.textContent);
-      setClarityIssues(issues);
-      setClarityRan(true);
-      // Paint the purple squiggles for whatever we can locate.
-      const marks = issues
-        .map((i) => {
-          const loc = locateQuote(editor, i.quote);
-          return loc ? { from: loc.from, to: loc.to, message: i.message } : null;
-        })
-        .filter((m): m is { from: number; to: number; message: string } => m !== null);
-      editor.commands.setAiMarks(marks);
-    } catch (err) {
-      setClarityError(err instanceof Error ? err.message : 'Clarity pass failed');
-    } finally {
-      setClarityLoading(false);
-    }
-  };
-
   return (
     <div className="flex-1 flex min-h-0">
       {/* Manuscript with the anchored issue popup */}
@@ -703,22 +623,6 @@ function ProofreadChapter({
             <span className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest font-bold opacity-40 whitespace-nowrap">
               <Loader2 className="w-3 h-3 animate-spin" /> Rechecking
             </span>
-          )}
-          {aiAvailable && (
-            <button
-              onClick={runClarity}
-              disabled={clarityLoading}
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] uppercase font-black tracking-widest transition-all whitespace-nowrap',
-                isDarkMode ? 'bg-purple-500/15 text-purple-300 hover:bg-purple-500/25' : 'bg-purple-500/10 text-purple-600 hover:bg-purple-500/20',
-                clarityLoading && 'opacity-50 cursor-wait',
-              )}
-              title="AI reads the chapter and flags wording that may be unclear. It never writes suggestions."
-            >
-              {clarityLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-              <span className="hidden sm:inline">{clarityRan ? 'Re-run clarity pass' : 'Run clarity pass'}</span>
-              <span className="sm:hidden">Clarity</span>
-            </button>
           )}
         </div>
 
@@ -775,16 +679,11 @@ function ProofreadChapter({
                         <Plus className="w-3 h-3" /> Dictionary
                       </button>
                     )}
-                    {current.source === 'clarity' && (
-                      <span className="text-[9px] italic opacity-40 basis-full">
-                        No rewrite offered — edit the passage in place if you agree.
-                      </span>
-                    )}
                     <button
                       onClick={() => dismiss(current)}
                       className="px-2 py-1.5 rounded-lg text-[10px] font-bold border border-transparent opacity-60 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/5 transition-all"
                     >
-                      {current.source === 'clarity' ? 'Done' : 'Ignore'}
+                      Ignore
                     </button>
 
                     <div className="ml-auto flex items-center gap-1">
@@ -839,7 +738,7 @@ function ProofreadChapter({
                   <div>
                     <p className="text-xs font-bold">Chapter clean</p>
                     <p className="text-[10px] opacity-40">
-                      No {clarityRan ? 'spelling, grammar, or clarity' : 'spelling or grammar'} issues found.
+                      No spelling or grammar issues found.
                     </p>
                   </div>
                   {hasNextChapter && (
@@ -857,11 +756,6 @@ function ProofreadChapter({
               </div>
             )}
 
-            {clarityError && (
-              <div className="sticky bottom-2 z-30 flex justify-center">
-                <p className="px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-[10px] text-red-500">{clarityError}</p>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -869,9 +763,9 @@ function ProofreadChapter({
       {/* Optional issue list panel */}
       {showList && (
         <div className="w-72 shrink-0 border-l border-black/12 dark:border-white/15 overflow-y-auto custom-scrollbar p-3 space-y-4">
-          {(['spelling', 'grammar', 'clarity'] as IssueSource[]).map((source) => {
+          {(['spelling', 'grammar'] as IssueSource[]).map((source) => {
             const rows = queue.filter((r) => r.source === source);
-            if (rows.length === 0 && !(source === 'clarity' && clarityRan)) return null;
+            if (rows.length === 0) return null;
             return (
               <div key={source}>
                 <div className="flex items-center justify-between px-2 mb-1.5">

@@ -6,7 +6,7 @@ import { cn } from '../../lib/utils';
 
 /**
  * Bubble-menu actions contributed by plugins (the `selectionActions` slot — what
- * a Thesaurus plugin uses).
+ * selection-oriented plugins use).
  *
  * Rendered as its own bubble beneath the built-in selection toolbar rather than
  * threaded into it, so a plugin can never break the core formatting bar.

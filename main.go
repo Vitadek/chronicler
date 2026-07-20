@@ -68,9 +68,6 @@ func main() {
 	// Seed plugins on first boot
 	_ = plugins.SeedPlugins(cfg.DataDir)
 
-	// Initialize AI service key validators and cache
-	api.InitAI(cfg)
-
 	// Create and initialize the central HTTP router
 	router := api.NewServerRouter(cfg, database, collabHub, repManager, WebFS)
 	handler := router.Init()

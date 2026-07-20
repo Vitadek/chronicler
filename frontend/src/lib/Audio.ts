@@ -6,8 +6,8 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 /**
  * Inline audio attachment.
  *
- * Used by the `/ai_listen` command and the bubble-menu "Listen" action.
- * Marks a span of text and stashes a blob URL (or a session-keyed handle)
+ * Legacy document-schema support for manuscripts containing audio marks.
+ * Marks a span of text and stashes a session-scoped blob URL handle
  * so a floating play button can be rendered next to the marked text.
  *
  * Storage strategy:
@@ -16,11 +16,11 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
  *     and would dead-link, (b) we don't want audio surviving into a
  *     manuscript export.
  *   - The actual blob URL lives in a module-level Map keyed by the token.
- *     When the AI returns audio, the caller registers it; when the play
+ *     When a caller provides audio, it registers the URL; when the play
  *     widget is clicked, we look it up.
  *
  * Audio is session-scoped: it doesn't survive a reload. That's fine and
- * deliberate — re-running /ai_listen regenerates a fresh take.
+ * deliberate; old manuscripts retain their mark attributes without loss.
  */
 
 const audioStore = new Map<string, string>(); // token -> blob URL
@@ -68,7 +68,7 @@ function buildWidget(token: string) {
     widget.type = 'button';
     widget.className = 'audio-icon-widget';
     widget.setAttribute('data-audio-token', token);
-    widget.setAttribute('title', 'Play audio (AI narration)');
+    widget.setAttribute('title', 'Play attached audio');
     widget.innerHTML = `
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.4; margin-left: 12px; display: inline-block; cursor: pointer; pointer-events: auto;">
         <polygon points="5 3 19 12 5 21 5 3"></polygon>

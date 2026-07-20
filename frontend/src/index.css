@@ -144,7 +144,7 @@
   color: currentColor;
   white-space: pre;
 }
-/* Checker squiggles (.tense-shift / .grammar-lint) live in styles/checkers.css,
+/* Checker squiggles (.grammar-lint) live in styles/checkers.css,
    imported from src/main.tsx so they're shared with the mobile editor bundle. */
 
 .novel-editor .ProseMirror h2 {

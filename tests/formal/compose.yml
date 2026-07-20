@@ -84,7 +84,6 @@ services:
       S3_ALLOW_INSECURE_HTTP: "true"
       AWS_ACCESS_KEY_ID: chronicle-formal
       AWS_SECRET_ACCESS_KEY: chronicle-formal-secret
-      AI_UI: "off"
     volumes:
       - chronicle-data:/data
     depends_on:

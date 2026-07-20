@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect, useDeferredValue } from 'react';
-import { Book, Plus, MoreVertical, Menu, X, Trash2, Settings, ChevronLeft, Moon, Sun, Cloud, Layout, Copy, GripVertical, FileText, List, Search, Upload, Check, Download, Briefcase, User, Info, Library, Sparkles, AlignLeft, Bot, Smartphone, Clock, SpellCheck, CaseSensitive } from 'lucide-react';
+import { Book, Plus, MoreVertical, Menu, X, Trash2, Settings, ChevronLeft, Moon, Sun, Cloud, Layout, Copy, GripVertical, FileText, List, Search, Upload, Check, Download, Briefcase, User, Info, Library, AlignLeft, Smartphone, SpellCheck, CaseSensitive } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { Chapter, ManuscriptMetadata, UserProfile, ExportSettings, DEFAULT_EXPORT_SETTINGS } from '../types';
@@ -11,18 +11,11 @@ import { MarkdownExportDialog } from './MarkdownExportDialog';
 import { useCoreFeature, usePluginHost, usePluginSlot } from '../plugins/host/PluginHost';
 import { PluginBoundary } from '../plugins/host/PluginBoundary';
 import { countWords, readingMinutes, formatWordCount } from '../lib/wordCount';
-import { MarkdownRenderer } from './MarkdownRenderer';
 import { CoverArtUpload } from './CoverArtUpload';
-import { AiSettingsPanel } from './AiSettingsPanel';
 import { ChapterMenu } from './ChapterMenu';
 import { OutlinePane } from './OutlinePane';
-import { IssuesPane } from './IssuesPane';
-import type { TenseShiftHit } from '../lib/TenseShift';
-import type { GrammarMark } from '../lib/Grammar';
 import type { Editor } from '@tiptap/react';
 import type { Character, PlotNode, PlotEdge } from '../types';
-import type { AiConfig, AiProvider } from '../services/aiConfig';
-import type { ProviderStatus } from '../services/aiService';
 import {
   DndContext,
   closestCenter,
@@ -55,18 +48,10 @@ interface SidebarProps {
   onReorderChapters: (chapters: Chapter[]) => void;
   isAutocompleteEnabled: boolean;
   onToggleAutocomplete: () => void;
-  isTenseCheckEnabled: boolean;
-  onToggleTenseCheck: () => void;
   isGrammarCheckEnabled: boolean;
   onToggleGrammarCheck: () => void;
   isAutoCorrectEnabled: boolean;
   onToggleAutoCorrect: () => void;
-  isIssuesPanelEnabled: boolean;
-  onToggleIssuesPanel: () => void;
-  tenseHits: TenseShiftHit[];
-  grammarMarks: GrammarMark[];
-  isThesaurusEnabled: boolean;
-  onToggleThesaurus: () => void;
   isZenModeEnabled: boolean;
   onToggleZenMode: () => void;
   /** First-line indent for body paragraphs in the editor. SMF default ON. */
@@ -74,20 +59,6 @@ interface SidebarProps {
   onToggleFirstLineIndent: () => void;
   touchControlsMode: 'auto' | 'on' | 'off';
   onChangeTouchControls: (mode: 'auto' | 'on' | 'off') => void;
-  /** Whether the AI agent menu is available in the editor. */
-  isAiEnabled: boolean;
-  onToggleAiEnabled: () => void;
-  /**
-   * Full AI config: provider, key, model, custom-model lists. Null when
-   * the user hasn't set up AI yet (Settings shows the wizard).
-   */
-  aiConfig?: AiConfig | null;
-  onUpdateAiConfig?: (cfg: AiConfig | null) => void;
-  serverAiProviders?: Partial<Record<AiProvider, ProviderStatus>>;
-  onRevalidateAi?: () => Promise<void> | void;
-  /** Whether AI actions (Review, Listen) show up in the selection bubble menu. */
-  isAiBubbleMenuEnabled?: boolean;
-  onToggleAiBubbleMenu?: () => void;
   manuscriptFont: string;
   onChangeFont: (font: string) => void;
   metadata: ManuscriptMetadata;
@@ -103,16 +74,6 @@ interface SidebarProps {
   onReturnToLibrary?: () => void;
   /** Per-format export preferences (HTML theme, Hugo front matter, EPUB cover/rights). */
   exportSettings?: ExportSettings;
-  /** Server AI_UI=off: render no AI settings or command help at all. */
-  isAiUiHidden?: boolean;
-  /**
-   * AI-generated outline. When non-empty, the Outline pane shows this in
-   * addition to the structural headings. Lives in App state so it persists
-   * across sidebar opens/closes within a session.
-   */
-  aiOutlineMarkdown?: string;
-  isAiOutlineLoading?: boolean;
-  onClearAiOutline?: () => void;
   onUpdateSynopsis?: (text: string) => void;
   /** Live TipTap editor instance for the open chapter; used by the Comments panel
    *  to walk the doc and apply mark edits in-place. */
@@ -404,32 +365,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onReorderChapters,
   isAutocompleteEnabled,
   onToggleAutocomplete,
-  isTenseCheckEnabled,
-  onToggleTenseCheck,
   isGrammarCheckEnabled,
   onToggleGrammarCheck,
   isAutoCorrectEnabled,
   onToggleAutoCorrect,
-  isIssuesPanelEnabled,
-  onToggleIssuesPanel,
-  tenseHits,
-  grammarMarks,
-  isThesaurusEnabled,
-  onToggleThesaurus,
   isZenModeEnabled,
   onToggleZenMode,
   isFirstLineIndentEnabled,
   onToggleFirstLineIndent,
   touchControlsMode,
   onChangeTouchControls,
-  isAiEnabled,
-  onToggleAiEnabled,
-  aiConfig,
-  onUpdateAiConfig,
-  serverAiProviders,
-  onRevalidateAi,
-  isAiBubbleMenuEnabled,
-  onToggleAiBubbleMenu,
   manuscriptFont,
   onChangeFont,
   metadata,
@@ -441,10 +386,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onDeleteManuscript,
   onReturnToLibrary,
   exportSettings = DEFAULT_EXPORT_SETTINGS,
-  isAiUiHidden,
-  aiOutlineMarkdown,
-  isAiOutlineLoading,
-  onClearAiOutline,
   onUpdateSynopsis,
   editor,
   characters,
@@ -460,24 +401,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onDeletePlotEdge,
   className 
 }) => {
-  const [view, setView] = useState<'chapters' | 'outline' | 'issues' | 'settings' | 'export' | 'profile' | string>('chapters');
+  const [view, setView] = useState<'chapters' | 'outline' | 'settings' | 'export' | 'profile' | string>('chapters');
 
-  // Sidebar tabs contributed by plugins — the slot the Issues Panel and Outliner
-  // plugins occupy.
+  // Sidebar tabs contributed by plugins.
   const pluginTabs = usePluginSlot('sidebarTabs');
   const { makeContext, reportError } = usePluginHost();
 
-  // …and when one of those plugins declares it REPLACES the built-in equivalent,
-  // core stands down so the user doesn't get two Outline panes / two Issues tabs.
-  const issuesActive = isIssuesPanelEnabled && useCoreFeature('core:issues');
+  // Core stands down when a plugin replaces the outliner.
   const outlineActive = useCoreFeature('core:outliner');
 
   // If the active tab is switched off (by the user's toggle, or by a plugin
   // taking the feature over), fall back to the chapter list.
   useEffect(() => {
-    if (!issuesActive && view === 'issues') setView('chapters');
     if (!outlineActive && view === 'outline') setView('chapters');
-  }, [issuesActive, outlineActive, view]);
+  }, [outlineActive, view]);
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState<'docx' | 'md' | 'html' | 'epub' | null>(null);
@@ -798,19 +735,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   Outline
                 </button>
               )}
-              {issuesActive && (
-                <button
-                  onClick={() => setView('issues')}
-                  className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
-                    view === 'issues' ? (isDarkMode ? "bg-white/10 text-white" : "bg-white text-black shadow-sm") : "opacity-40"
-                  )}
-                >
-                  <SpellCheck className="w-3 h-3" />
-                  Issues
-                </button>
-              )}
-              {/* Plugin-contributed tabs (the Issues/Outliner migration slot) */}
+              {/* Plugin-contributed tabs */}
               {pluginTabs.map(({ pluginId, item }) => {
                 const key = `plugin:${pluginId}:${item.id}`;
                 return (
@@ -929,9 +854,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onUpdateSynopsis={(text) => onUpdateSynopsis?.(text)}
                     headings={headings}
                     onHeadingClick={handleHeadingClick}
-                    aiOutlineMarkdown={aiOutlineMarkdown}
-                    isAiOutlineLoading={isAiOutlineLoading}
-                    onClearAiOutline={onClearAiOutline}
                     characters={characters ?? EMPTY_CHARACTERS}
                     plotNodes={plotNodes ?? EMPTY_PLOT_NODES}
                     plotEdges={plotEdges ?? EMPTY_PLOT_EDGES}
@@ -946,24 +868,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     chapters={chapters}
                     currentChapterId={currentChapterId}
                     onSelectChapter={onSelectChapter}
-                  />
-                </motion.div>
-              ) : view === 'issues' ? (
-                <motion.div
-                  key="issues"
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.98 }}
-                  className="flex flex-col flex-1 min-h-0 overflow-hidden"
-                >
-                  <IssuesPane
-                    isDarkMode={isDarkMode}
-                    editor={editor || null}
-                    tenseHits={tenseHits}
-                    grammarMarks={grammarMarks}
-                    tenseEnabled={isTenseCheckEnabled}
-                    grammarEnabled={isGrammarCheckEnabled}
-                    chapterId={currentChapterId}
                   />
                 </motion.div>
               ) : view.startsWith('plugin:') ? (
@@ -1407,15 +1311,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         </button>
 
                         <ReplaceableToggle
-                          icon={<Clock className="w-4 h-4" />}
-                          label="Tense Check"
-                          capability="core:tense"
-                          enabled={isTenseCheckEnabled}
-                          onToggle={onToggleTenseCheck}
-                          isDarkMode={isDarkMode}
-                        />
-
-                        <ReplaceableToggle
                           icon={<SpellCheck className="w-4 h-4" />}
                           label="Grammar Check"
                           capability="core:grammar"
@@ -1430,24 +1325,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           capability="core:autocorrect"
                           enabled={isAutoCorrectEnabled}
                           onToggle={onToggleAutoCorrect}
-                          isDarkMode={isDarkMode}
-                        />
-
-                        <ReplaceableToggle
-                          icon={<List className="w-4 h-4" />}
-                          label="Issues Panel"
-                          capability="core:issues"
-                          enabled={isIssuesPanelEnabled}
-                          onToggle={onToggleIssuesPanel}
-                          isDarkMode={isDarkMode}
-                        />
-
-                        <ReplaceableToggle
-                          icon={<Search className="w-4 h-4" />}
-                          label="Thesaurus Popup"
-                          capability="core:thesaurus"
-                          enabled={isThesaurusEnabled}
-                          onToggle={onToggleThesaurus}
                           isDarkMode={isDarkMode}
                         />
 
@@ -1531,20 +1408,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           </p>
                         </div>
 
-                        {!isAiUiHidden && (
-                          <AiSettingsPanel
-                            isDarkMode={isDarkMode}
-                            isAiEnabled={isAiEnabled}
-                            onToggleAiEnabled={onToggleAiEnabled}
-                            aiConfig={aiConfig || null}
-                            onUpdateAiConfig={(next) => onUpdateAiConfig?.(next)}
-                            isAiBubbleMenuEnabled={!!isAiBubbleMenuEnabled}
-                            onToggleAiBubbleMenu={() => onToggleAiBubbleMenu?.()}
-                            serverProviders={serverAiProviders}
-                            onRevalidate={onRevalidateAi}
-                          />
-                        )}
-
                         <div className="px-4">
                           <p className="text-[10px] uppercase tracking-widest font-bold opacity-30 mb-3">Manuscript Font</p>
                           <div className="grid grid-cols-2 gap-2">
@@ -1567,32 +1430,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         </div>
                       </div>
                     </section>
-
-                    {/* AI Agent Commands */}
-                    {!isAiUiHidden && isAiEnabled && !!aiConfig && (
-                      <section className="space-y-4">
-                        <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold mb-4 opacity-40">AI Agent Commands</h3>
-                        <div className="px-4 space-y-4">
-                          <p className="text-[9px] opacity-40 italic leading-relaxed">
-                            Type <span className="font-mono font-bold opacity-100">#!</span> in the editor to trigger these commands:
-                          </p>
-                          <div className="space-y-3">
-                            {[
-                              { cmd: 'ai_review', desc: 'Pure observation — describes prose, never suggests changes' },
-                              { cmd: 'ai_outline', desc: 'Outlines what is already written (appears in the Outline pane)' },
-                              { cmd: 'ai_outline/whereami', desc: 'Locates the manuscript in a narrative arc' },
-                              { cmd: 'ai_review/make_comments', desc: 'Reader reactions — how passages sound and feel' },
-                              { cmd: 'ai_listen', desc: 'Reads the selection (or current paragraph) aloud and attaches a play button' },
-                            ].map(item => (
-                              <div key={item.cmd} className="group cursor-help">
-                                <div className="font-mono text-[10px] font-bold opacity-60 group-hover:opacity-100 transition-opacity">#!/{item.cmd}</div>
-                                <div className="text-[9px] opacity-30 leading-snug">{item.desc}</div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </section>
-                    )}
 
                     {/* Scene Breaks */}
                     <section className="space-y-4">

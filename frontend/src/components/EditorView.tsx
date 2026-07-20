@@ -1,17 +1,13 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { EditorContent, ReactRenderer } from '@tiptap/react';
 import { useChronicleEditor, UseChronicleEditorProps } from '../hooks/useChronicleEditor';
-import { SmartThesaurus } from './SmartThesaurus';
+import { FormattingToolbar } from './FormattingToolbar';
 import { CommandPortal } from './CommandPortal';
 import { cn } from '../lib/utils';
 import { authService } from '../services/authService';
 import { motion, AnimatePresence } from 'motion/react';
-import { MessageSquare, Check, X, Sparkles, Loader2 } from 'lucide-react';
-import { getAiResponse, getAiSpeech } from '../services/aiService';
-import type { AiConfig } from '../services/aiConfig';
-import { newAudioToken, registerAudioToken } from '../lib/Audio';
+import { MessageSquare, Check, X } from 'lucide-react';
 import { loadCoverBlobUrl } from '../services/coverService';
-import { MarkdownRenderer } from './MarkdownRenderer';
 import { usePluginHost, usePluginSlot } from '../plugins/host/PluginHost';
 import { CompanionHost } from '../plugins/host/CompanionHost';
 import { SelectionActionsHost } from '../plugins/host/SelectionActionsHost';
@@ -43,27 +39,16 @@ interface EditorViewProps {
   /** Cover image filename to display at the top of the title page. */
   coverArt?: string;
   isAutocompleteEnabled?: boolean;
-  /** Live tense-shift squiggles in the body editor (lib/TenseShift.ts). */
-  isTenseCheckEnabled?: boolean;
   /** Live grammar/style squiggles in the body editor (lib/Grammar.ts, LanguageTool). */
   isGrammarCheckEnabled?: boolean;
   /** Deterministic autocorrect + sentence-start capitalization (lib/AutoCorrect.ts). */
   isAutoCorrectEnabled?: boolean;
-  /** Forwarded up to the Issues panel after each checker recompute. */
-  onTenseShifts?: (hits: import('../lib/TenseShift').TenseShiftHit[]) => void;
   onGrammarMarks?: (marks: import('../lib/Grammar').GrammarMark[]) => void;
-  isThesaurusEnabled?: boolean;
   isZenModeEnabled?: boolean;
   /** Whether body paragraphs render with a first-line indent. SMF default. */
   isFirstLineIndentEnabled?: boolean;
-  /** When false the AI agent menu (#!) is suppressed in the command portal. */
-  isAiEnabled?: boolean;
-  /** When true, AI Review and AI Listen show up in the selection bubble toolbar. */
-  isAiBubbleMenuEnabled?: boolean;
   /** Touch UI: swap the floating selection bubble for a docked bottom bar. */
   isTouchUI?: boolean;
-  /** Full AI config (provider + key + model). Null when AI isn't set up. */
-  aiConfig?: AiConfig | null;
   isSidebarOpen: boolean;
   sceneBreakStyle: 'classic' | 'dots' | 'ornamental' | 'custom';
   customSceneBreakSvg?: string;
@@ -72,14 +57,6 @@ interface EditorViewProps {
   title: string;
   content: string;
   onUpdate: (title: string, content: string) => void;
-  /**
-   * Called when the AI Outline command produces a result. The parent stashes
-   * the markdown so it can be rendered inside the sidebar Outline pane and
-   * persists across overlay close.
-   */
-  onAiOutlineResult?: (markdown: string) => void;
-  /** Called when an outline run starts so the Outline pane can show a spinner. */
-  onAiOutlineLoadingChange?: (loading: boolean) => void;
   /** Hands the live TipTap editor up to the parent so the sidebar's
    *  Comments panel can read marks and apply edits in-place. */
   onEditorReady?: (editor: any) => void;
@@ -94,18 +71,12 @@ export const EditorView: React.FC<EditorViewProps> = ({
   isTitlePage,
   coverArt,
   isAutocompleteEnabled,
-  isTenseCheckEnabled = false,
   isGrammarCheckEnabled = false,
   isAutoCorrectEnabled = true,
-  onTenseShifts,
   onGrammarMarks,
-  isThesaurusEnabled,
   isZenModeEnabled,
   isFirstLineIndentEnabled = true,
-  isAiEnabled = true,
-  isAiBubbleMenuEnabled = false,
   isTouchUI = false,
-  aiConfig,
   isSidebarOpen,
   sceneBreakStyle,
   customSceneBreakSvg,
@@ -114,8 +85,6 @@ export const EditorView: React.FC<EditorViewProps> = ({
   title,
   content, 
   onUpdate,
-  onAiOutlineResult,
-  onAiOutlineLoadingChange,
   onEditorReady,
   className
 }) => {
@@ -157,8 +126,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
   const pluginSlashCommands = usePluginSlot('slashCommands');
   const pluginSelectionActions = usePluginSlot('selectionActions');
 
-  // TipTap extensions contributed by enabled plugins (Autocorrect, Grammar
-  // Check, Tense Check…). Memoized on the loaded-plugin set so the editor is
+  // TipTap extensions contributed by enabled plugins. Memoized on the loaded-plugin set so the editor is
   // rebuilt only when plugins are enabled/disabled — not on every render.
   const editorExtensionSlots = usePluginSlot('editorExtensions');
   const pluginExtensions = useMemo(
@@ -185,10 +153,8 @@ export const EditorView: React.FC<EditorViewProps> = ({
     return () => window.removeEventListener('edit-comment', handleEditComment);
   }, []);
 
-  const [aiResult, setAiResult] = useState<{ title: string; body: string } | null>(null);
-  const [isAiLoading, setIsAiLoading] = useState(false);
-  // Title-page cover art — resolved lazily because the cover endpoint is
-  // auth-gated so we can't put the filename directly into <img src=...>.
+  // Title-page cover art is auth-gated, so resolve it to a blob URL rather
+  // than putting the stored filename directly into an image source.
   const [titleCoverUrl, setTitleCoverUrl] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -196,297 +162,23 @@ export const EditorView: React.FC<EditorViewProps> = ({
       setTitleCoverUrl(null);
       return;
     }
-    loadCoverBlobUrl(coverArt).then((url) => {
+    void loadCoverBlobUrl(coverArt).then((url) => {
       if (!cancelled) setTitleCoverUrl(url);
     });
     return () => { cancelled = true; };
   }, [isTitlePage, coverArt]);
 
-  const handleAiAction = async (command: string) => {
-    if (!editor) return;
-    if (!isAiEnabled) {
-      // AI agent disabled in Settings — silently no-op so the keystroke
-      // doesn't feel broken; the command portal already hides AI rows when
-      // disabled, so this branch is only reached if a user types a path
-      // directly without seeing the menu.
-      return;
-    }
-    if (!aiConfig) {
-      // AI is enabled but the user hasn't set provider/key/model yet.
-      setAiResult({
-        title: 'AI not configured',
-        body: 'Open Settings → AI Agent and choose a provider, paste an API key, and pick a model before running AI commands.',
-      });
-      return;
-    }
-
-    // -------- TTS branch (separate from the text-generation pipeline) --------
-    //
-    // /ai_listen reads the user's selection (or the current paragraph if the
-    // selection is collapsed) and posts it to /api/ai/speak. The resulting
-    // audio blob is registered with a session-scoped token, and an AudioMark
-    // is applied to the same text range so the play widget renders next to
-    // it like a comment marker.
-    if (command === 'ai_listen') {
-      const { state } = editor;
-      let { from, to } = state.selection;
-      if (from === to) {
-        // No selection — fall back to the current paragraph.
-        const $pos = state.doc.resolve(from);
-        from = $pos.start();
-        to = $pos.end();
-      }
-      const text = state.doc.textBetween(from, to, '\n').trim();
-      if (!text) {
-        setAiResult({ title: 'Nothing to read', body: 'Place the cursor in a paragraph (or select some text) before running /ai_listen.' });
-        return;
-      }
-      setIsAiLoading(true);
-      try {
-        const blobUrl = await getAiSpeech(text, aiConfig);
-        // The await crossed ticks; the editor may have been torn down since.
-        if (editor.isDestroyed) return;
-        const token = newAudioToken();
-        registerAudioToken(token, blobUrl);
-        // Apply the audio mark across the chosen range.
-        editor.chain().focus().setTextSelection({ from, to }).setMark('audio', { token }).run();
-        // Auto-play the first take so the user gets immediate feedback.
-        try {
-          const a = new Audio(blobUrl);
-          a.play().catch(() => {});
-        } catch { /* ignore */ }
-      } catch (err: any) {
-        setAiResult({
-          title: 'Audio Failed',
-          body: typeof err?.message === 'string' ? err.message : 'TTS request failed.',
-        });
-      } finally {
-        setIsAiLoading(false);
-      }
-      return;
-    }
-
-    // -------- Text-generation branch --------
-    // Outline goes to the sidebar pane, not the overlay. The overlay is
-    // reserved for one-shot responses the author reads and dismisses; an
-    // outline is a reference they keep returning to while writing.
-    const isOutlineCommand = command === 'ai_outline';
-
-    if (isOutlineCommand) {
-      onAiOutlineLoadingChange?.(true);
-    } else {
-      setIsAiLoading(true);
-    }
-
-    window.dispatchEvent(new CustomEvent('chronicle:ai-start'));
-
-    try {
-      const fullDoc = editor.getText();
-      const { $from } = editor.state.selection;
-      const currentParagraph = $from.parent.textContent;
-
-      let prompt = "";
-      let title = "";
-
-      /**
-       * AI behaviour contract (shared across all four commands):
-       *
-       *  - Review and Comments are STRICTLY OBSERVATIONAL. They describe what
-       *    the prose is doing and how it lands, never what the user "should"
-       *    do differently. No rewrites, no edits, no "you could try…".
-       *  - Outline is structural — it lays out beats or summarizes what's on
-       *    the page. It does not propose new scenes or rewrites.
-       *  - Story Arc Analysis is positional — where the manuscript sits in a
-       *    standard narrative arc. It does not advise on next steps.
-       *
-       * The "DO NOT" lines are deliberately blunt and repeated because models
-       * default to being helpful by suggesting improvements; we override that
-       * default explicitly. We also include positive framings so the model
-       * has a clear target to aim at rather than just a list of refusals.
-       */
-      const SHARED_RULES = `
-  RULES (strict):
-  - Do NOT suggest any changes, edits, rewrites, or alternative wordings.
-  - Do NOT offer "revised versions," "polished versions," or example rewrites.
-  - Do NOT use phrases like "you could," "consider," "try," "I would suggest," "you might want to," or "to improve."
-  - Do NOT propose new scenes, lines, or content.
-  - If asked to evaluate, only describe what is present and how it reads.
-  - Quote short phrases from the text when illustrating a point — never replace them with your own wording.
-  `.trim();
-
-      switch (command) {
-        case 'ai_review':
-          title = "AI Prose Review";
-          prompt = `You are reviewing a manuscript excerpt. Describe what the prose is doing — its rhythm, tone, imagery, pacing, point of view, and how the active paragraph functions in context. Treat this as a reader's report, not an editor's notes.
-
-  ${SHARED_RULES}
-
-  Additional rules for this mode:
-  - Pure observation only. No recommendations, no "stronger if…" framings.
-  - Sections to cover, each in 2-4 sentences:
-  1. Voice and tone
-  2. Flow and rhythm
-  3. Imagery and sensory work
-  4. How the active paragraph reads in context
-  - End with a short note on what the paragraph appears to be doing for the story — again as observation, not advice.
-
-  FULL MANUSCRIPT:
-  ${fullDoc.substring(0, 5000)}${fullDoc.length > 5000 ? '\n[...manuscript continues...]' : ''}
-
-  ACTIVE PARAGRAPH:
-  ${currentParagraph}`;
-          break;
-
-        case 'ai_outline':
-          title = "Plot Outline";
-          prompt = `Produce a structured outline of what is already written in the manuscript below. This is a descriptive outline of existing material, not a plan for future material.
-
-  ${SHARED_RULES}
-
-  Additional rules for this mode:
-  - Outline ONLY what is on the page. Do not invent or propose scenes that aren't written.
-  - Use the following structure:
-  - **Premise**: one or two sentences capturing what the manuscript is about so far.
-  - **Beats**: a numbered list of the major story beats present in the text, in order. Each beat: one short sentence.
-  - **Characters introduced**: bulleted list with one-line descriptions drawn from the text.
-  - **Open threads**: bulleted list of questions or tensions the text has raised but not yet resolved. (Just naming them, not advising how to resolve them.)
-
-  MANUSCRIPT:
-  ${fullDoc}`;
-          break;
-
-        case 'ai_outline_whereami':
-          title = "Story Arc Analysis";
-          prompt = `Locate the manuscript within a standard narrative arc. This is a positional analysis, not advice.
-
-  ${SHARED_RULES}
-
-  Additional rules for this mode:
-  - Identify which phase the manuscript currently sits in: Exposition / Inciting Incident / Rising Action / Midpoint / Crisis / Climax / Falling Action / Resolution.
-  - Explain your reasoning by pointing to specific moments in the text.
-  - Optionally note which phase elements (if any) appear to still be active or already complete.
-  - Do NOT advise what should happen next.
-
-  MANUSCRIPT:
-  ${fullDoc}`;
-          break;
-
-        case 'ai_review_make_comments':
-          title = "Reader Comments";
-          prompt = `Read the manuscript below as a thoughtful reader and leave comments on how passages SOUND and FEEL. These are reader reactions, not editorial notes.
-
-  ${SHARED_RULES}
-
-  Additional rules for this mode:
-  - Comments are about the EXPERIENCE of reading: what a passage evokes, what mood it sets, what attention it pulls, what questions it raises.
-  - Do NOT flag grammar, punctuation, tense, plot holes, or inconsistencies. That is editing — different job.
-  - Do NOT propose alternative phrasings, rewrites, or "stronger" versions of anything.
-  - Do NOT say a passage is "weak," "needs work," "would benefit from…" or similar. Describe; do not prescribe.
-  - Format each comment as:
-
-  > [short quoted phrase from the text, ≤12 words]
-
-  One or two sentences describing how this lands as a reader — the feel, the resonance, the texture. No "you should" anywhere.
-
-  - Aim for 5-10 comments spread across the manuscript.
-
-  MANUSCRIPT:
-  ${fullDoc}`;
-          break;
-      }
-
-      const response = await getAiResponse(prompt, aiConfig);
-
-      /**
-       * The OpenAI Responses API wraps its output in a typed array:
-       *   { output: [ { type: 'reasoning', ... }, { type: 'message', content: [{ type: 'output_text', text: '...' }] } ] }
-       *
-       * Walk the array looking for a message block's output_text. Fall back
-       * to older Chat Completions shape and then raw JSON so nothing is silent.
-       */
-      const extractText = (data: any): string => {
-        if (!data) return "No response received.";
-
-        // Responses API: data.output is an array of typed blocks
-        if (Array.isArray(data.output)) {
-          for (const block of data.output) {
-            if (block.type === 'message' && Array.isArray(block.content)) {
-              for (const chunk of block.content) {
-                if (chunk.type === 'output_text' && typeof chunk.text === 'string') {
-                  return chunk.text;
-                }
-              }
-            }
-          }
-        }
-
-        // Chat Completions API: data.choices[0].message.content
-        if (Array.isArray(data.choices) && data.choices[0]?.message?.content) {
-          return data.choices[0].message.content;
-        }
-
-        // Already a plain string
-        if (typeof data === 'string') return data;
-
-        // Last resort — show raw so it's obvious something changed in the API
-        return JSON.stringify(data, null, 2);
-      };
-
-      const bodyText = extractText(response);
-      if (isOutlineCommand) {
-        onAiOutlineResult?.(bodyText);
-      } else {
-        setAiResult({ title, body: bodyText });
-      }
-    } catch (error: any) {
-      let errorMessage = error.message || "An unexpected error occurred.";
-
-      // Friendly message for quota issues
-      if (typeof errorMessage === 'string' && errorMessage.toLowerCase().includes("quota")) {
-        errorMessage = "OpenAI Quota Exceeded: Your API key has run out of credits or reached its limit. Please check your OpenAI billing dashboard.";
-      }
-
-      // For outline failures, surface in the overlay since the sidebar pane
-      // doesn't have an error UI of its own.
-      setAiResult({ 
-        title: isOutlineCommand ? "Outline Failed" : "AI Action Failed", 
-        body: typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage)
-      });
-    } finally {
-      if (isOutlineCommand) {
-        onAiOutlineLoadingChange?.(false);
-      } else {
-        setIsAiLoading(false);
-      }
-      window.dispatchEvent(new CustomEvent('chronicle:ai-end'));
-    }
-  };
-
   // The CommandPortal closures are created once when the editor mounts and
   // captured inside the CommandLine extension (the useMemo(..., []) below).
-  // We can't rebuild extensions on toggle (TipTap doesn't reload them), so
-  // every value a slash command needs at invoke time is read through this
-  // ref, which mirrors the latest render. Note the effect has NO deps array:
-  // handleAiAction is recreated each render (closing over fresh
-  // isAiEnabled/aiConfig), so the mirror must refresh every render too —
-  // otherwise typed #!/ai_* commands would bypass the AI kill switch, and
-  // manuscriptId could go stale across title-page → title-page switches
-  // (both manuscripts share the 'title-page' chapter key, so no remount).
+  // Plugin commands need the current context even though TipTap extensions
+  // are created once for the editor's lifetime.
   const liveRef = useRef({
-    isAiEnabled,
-    manuscriptId,
-    aiConfig: aiConfig ?? null,
-    handleAiAction,
     makeContext,
     reportError,
     pluginSlashCommands,
   });
   useEffect(() => {
     liveRef.current = {
-      isAiEnabled,
-      manuscriptId,
-      aiConfig: aiConfig ?? null,
-      handleAiAction,
       makeContext,
       reportError,
       pluginSlashCommands,
@@ -547,12 +239,6 @@ export const EditorView: React.FC<EditorViewProps> = ({
             .deleteRange(range)
             .setEpigraph()
             .run();
-        } else if (command.startsWith('ai_')) {
-          popup[0].hide();
-          editor.commands.deleteRange(range);
-          // Latest instance via the ref — sees current isAiEnabled/aiConfig,
-          // so the kill switch and settings edits apply to typed commands.
-          live.handleAiAction(command);
         }
       };
 
@@ -561,8 +247,6 @@ export const EditorView: React.FC<EditorViewProps> = ({
           component = new ReactRenderer(CommandPortal, {
             props: {
               ...props,
-              // Read live so toggling AI off/on takes effect immediately.
-              isAiEnabled: liveRef.current.isAiEnabled,
               command: makeCommand(props),
             },
             editor: props.editor,
@@ -582,7 +266,6 @@ export const EditorView: React.FC<EditorViewProps> = ({
         onUpdate(props: any) {
           component.updateProps({
             ...props,
-            isAiEnabled: liveRef.current.isAiEnabled,
             command: makeCommand(props),
           });
           popup[0].setProps({
@@ -675,14 +358,12 @@ export const EditorView: React.FC<EditorViewProps> = ({
     // renders instead, see below) — its only job is to stay ready in case
     // collab is toggled off. Skip the checker/autocomplete passes on this
     // hidden, content-frozen doc: they're pure waste (nothing reads a doc
-    // that's never shown) and previously overwrote App/Issues-panel state
+    // that's never shown) and previously overwrote parent checker state
     // with results from stale, divergent content (G1 in
     // frontend_optimizations.md).
     isAutocompleteEnabled: isAutocompleteEnabled && !collabEnabled,
-    isTenseCheckEnabled: isTenseCheckEnabled && !isTitlePage && !collabEnabled,
     isGrammarCheckEnabled: isGrammarCheckEnabled && !isTitlePage && !collabEnabled,
     isAutoCorrectEnabled: isAutoCorrectEnabled && !isTitlePage,
-    onTenseShifts,
     onGrammarMarks,
     isTouchUI,
     commandLineOptions,
@@ -898,18 +579,12 @@ export const EditorView: React.FC<EditorViewProps> = ({
               editor={titleEditor} 
               className="w-full"
             />
-            {(isThesaurusEnabled || (isAiBubbleMenuEnabled && isAiEnabled)) && (
-              <SmartThesaurus
+            <FormattingToolbar
                 editor={titleEditor}
                 isDarkMode={isDarkMode}
-                pluginKey="titleThesaurus"
+                pluginKey="titleFormatting"
                 isTouchUI={isTouchUI}
-                showThesaurus={isThesaurusEnabled}
-                showAi={isAiBubbleMenuEnabled && isAiEnabled}
-                onAiReview={() => handleAiAction('ai_review')}
-                onAiListen={() => handleAiAction('ai_listen')}
-              />
-            )}
+            />
           </div>
           {isTitlePage && (
             <div className="my-12 opacity-20 font-serif italic text-xl text-center">by</div>
@@ -931,16 +606,12 @@ export const EditorView: React.FC<EditorViewProps> = ({
                 className="w-full"
               />
             )}
-            {!collabEnabled && (isThesaurusEnabled || (isAiBubbleMenuEnabled && isAiEnabled)) && (
-              <SmartThesaurus
+            {!collabEnabled && (
+              <FormattingToolbar
                 editor={editor}
                 isDarkMode={isDarkMode}
-                pluginKey="contentThesaurus"
+                pluginKey="contentFormatting"
                 isTouchUI={isTouchUI}
-                showThesaurus={isThesaurusEnabled}
-                showAi={isAiBubbleMenuEnabled && isAiEnabled}
-                onAiReview={() => handleAiAction('ai_review')}
-                onAiListen={() => handleAiAction('ai_listen')}
               />
             )}
 
@@ -1064,69 +735,6 @@ export const EditorView: React.FC<EditorViewProps> = ({
           </div>
         </div>
       </div>
-
-      {/* AI Result Overlay */}
-      <AnimatePresence>
-        {(isAiLoading || aiResult) && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm"
-          >
-            <motion.div 
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              className="bg-[#1A1918] border border-white/10 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl"
-            >
-              <div className="px-8 py-6 border-b border-white/15 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-white/5">
-                    <Sparkles className="w-4 h-4 text-[#F1EDE4]" />
-                  </div>
-                  <h3 className="text-sm font-bold uppercase tracking-widest text-[#F1EDE4]">
-                    {isAiLoading ? "Consulting AI Agent..." : aiResult?.title}
-                  </h3>
-                </div>
-                {!isAiLoading && (
-                  <button 
-                    onClick={() => setAiResult(null)}
-                    className="p-1 rounded-full hover:bg-white/5 transition-colors"
-                  >
-                    <X className="w-4 h-4 text-white/40" />
-                  </button>
-                )}
-              </div>
-              
-              <div className="p-8 max-h-[60vh] overflow-y-auto">
-                {isAiLoading ? (
-                  <div className="flex flex-col items-center justify-center py-12 space-y-4">
-                    <Loader2 className="w-8 h-8 animate-spin text-white/20" />
-                    <p className="text-xs uppercase tracking-widest font-bold opacity-20">Analyzing Manuscript...</p>
-                  </div>
-                ) : (
-                  <MarkdownRenderer
-                    text={aiResult?.body ?? ''}
-                    theme="dark"
-                    className="font-roboto text-sm leading-relaxed"
-                  />
-                )}
-              </div>
-
-              {!isAiLoading && (
-                <div className="px-8 py-6 bg-black/20 flex justify-end">
-                  <button 
-                    onClick={() => setAiResult(null)}
-                    className="px-6 py-2 rounded-xl bg-[#F1EDE4] text-black text-[10px] uppercase font-bold tracking-widest hover:bg-white transition-all shadow-lg"
-                  >
-                    Back to Writing
-                  </button>
-                </div>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
     </div>
   );

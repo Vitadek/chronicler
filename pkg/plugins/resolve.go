@@ -8,12 +8,9 @@ import (
 
 var CoreCapabilities = []string{
 	"core:grammar",
-	"core:tense",
 	"core:autocorrect",
 	"core:outliner",
 	"core:proofreader",
-	"core:thesaurus",
-	"core:issues",
 }
 
 type PluginDeps struct {

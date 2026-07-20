@@ -33,6 +33,10 @@ type UpdateStatus struct {
 	Incoming        []IncomingCommit `json:"incoming"`
 }
 
+func emptyUpdateStatus() *UpdateStatus {
+	return &UpdateStatus{Incoming: make([]IncomingCommit, 0)}
+}
+
 type DiskPlugin struct {
 	ID           string            `json:"id"`
 	Name         string            `json:"name"`
@@ -171,7 +175,7 @@ func CheckForUpdates(pluginsDir string, id string) (*UpdateStatus, error) {
 
 	meta := ReadMeta(dir)
 	if meta.Source != "git" || meta.PinnedRef != nil {
-		return &UpdateStatus{UpdateAvailable: false}, nil
+		return emptyUpdateStatus(), nil
 	}
 
 	r, err := git.PlainOpen(dir)
@@ -200,13 +204,13 @@ func CheckForUpdates(pluginsDir string, id string) (*UpdateStatus, error) {
 		remoteRefName = plumbing.NewRemoteReferenceName("origin", "main")
 		remoteRef, err = r.Reference(remoteRefName, true)
 		if err != nil {
-			return &UpdateStatus{UpdateAvailable: false}, nil
+			return emptyUpdateStatus(), nil
 		}
 	}
 	remoteHash := remoteRef.Hash()
 
 	if headHash == remoteHash {
-		return &UpdateStatus{UpdateAvailable: false}, nil
+		return emptyUpdateStatus(), nil
 	}
 
 	cIter, err := r.Log(&git.LogOptions{
@@ -384,6 +388,25 @@ func ReadManifest(dir string) (*PluginDeps, error) {
 		return nil, fmt.Errorf("id must be alphanumeric with . _ -")
 	}
 
+	// Plugin manifests commonly omit optional capability collections. Keep the
+	// wire contract stable for every endpoint that returns a manifest-derived
+	// plugin by representing omitted collections as [] instead of null.
+	if pd.Provides == nil {
+		pd.Provides = make([]string, 0)
+	}
+	if pd.Requires == nil {
+		pd.Requires = make([]string, 0)
+	}
+	if pd.Wants == nil {
+		pd.Wants = make([]string, 0)
+	}
+	if pd.Conflicts == nil {
+		pd.Conflicts = make([]string, 0)
+	}
+	if pd.Replaces == nil {
+		pd.Replaces = make([]string, 0)
+	}
+
 	return &pd, nil
 }
 
@@ -424,11 +447,11 @@ func DescribePlugin(pluginsDir string, id string) (*DiskPlugin, error) {
 	var name string
 	var desc string
 	var version string
-	var provides []string
-	var requires []string
-	var wants []string
-	var conflicts []string
-	var replaces []string
+	provides := make([]string, 0)
+	requires := make([]string, 0)
+	wants := make([]string, 0)
+	conflicts := make([]string, 0)
+	replaces := make([]string, 0)
 	var dependencies map[string]string
 
 	if manifest != nil {

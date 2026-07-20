@@ -51,14 +51,6 @@ func (cc *CapabilitiesChecker) HostCapabilities() []string {
 	// retired and the plugin manifests have moved over.
 	caps := []string{"host:grammar", "host:languagetool"}
 
-	anyKey := cc.cfg.OpenAIKey != "" || cc.cfg.AnthropicKey != "" || cc.cfg.GeminiKey != ""
-	if cc.cfg.AIUIEnabled && anyKey {
-		caps = append(caps, "host:ai")
-	}
-	if cc.cfg.AIUIEnabled && cc.cfg.GeminiKey != "" {
-		caps = append(caps, "host:gemini")
-	}
-
 	cc.cache = caps
 	cc.cacheAt = time.Now()
 	return caps
@@ -77,16 +69,6 @@ func ExplainMissingHostCapability(cfg *config.Config, cap string) string {
 		// Not reachable in practice: the checker is compiled in and both names
 		// are published unconditionally (see HostCapabilities).
 		return "The built-in prose checker failed to initialise on this server."
-	case "host:ai":
-		if cfg.AIUIEnabled {
-			return "No AI provider key is configured. Set OPENAI_API_KEY, ANTHROPIC_API_KEY or GEMINI_API_KEY."
-		}
-		return "AI is disabled on this instance (AI_UI=off)."
-	case "host:gemini":
-		if cfg.AIUIEnabled {
-			return "This needs GEMINI_API_KEY (it uses Gemini structured output)."
-		}
-		return "AI is disabled on this instance (AI_UI=off)."
 	default:
 		return "The host does not provide \"" + cap + "\"."
 	}

@@ -25,8 +25,6 @@ export interface AuthConfig {
   logoutUrl?: string;
   requiresToken?: boolean;
   nextcloudConnectUrl?: string;
-  /** Whether the server has an OPENAI_API_KEY set. */
-  aiAvailable?: boolean;
 }
 
 export const authService = {

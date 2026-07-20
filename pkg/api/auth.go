@@ -54,15 +54,8 @@ func (h *AuthHandler) Mount(r chi.Router) {
 }
 
 func (h *AuthHandler) getConfig(w http.ResponseWriter, r *http.Request) {
-	aiAvailable := h.cfg.OpenAIKey != "" || h.cfg.AnthropicKey != "" || h.cfg.GeminiKey != ""
 	out := map[string]interface{}{
-		"mode":        h.cfg.Auth.Mode,
-		"aiAvailable": aiAvailable,
-		"aiProviders": map[string]bool{
-			"openai":    h.cfg.OpenAIKey != "",
-			"anthropic": h.cfg.AnthropicKey != "",
-			"gemini":    h.cfg.GeminiKey != "",
-		},
+		"mode": h.cfg.Auth.Mode,
 	}
 
 	if h.cfg.Auth.Mode == config.AuthModeOIDC {
@@ -104,7 +97,7 @@ func (h *AuthHandler) startOIDC(w http.ResponseWriter, r *http.Request) {
 
 	codeVerifier := oauth2.GenerateVerifier()
 	codeChallenge := oauth2.S256ChallengeFromVerifier(codeVerifier)
-	
+
 	stateBytes := make([]byte, 24)
 	rand.Read(stateBytes)
 	state := base64.RawURLEncoding.EncodeToString(stateBytes)
@@ -362,7 +355,7 @@ func (h *AuthHandler) callbackNextcloud(w http.ResponseWriter, r *http.Request) 
 		rawBytes := make([]byte, 12)
 		rand.Read(rawBytes)
 		userId = base64.RawURLEncoding.EncodeToString(rawBytes)
-		
+
 		_, errInsert := h.database.Exec(`
 			INSERT INTO users (id, email, display_name, nc_user_id, nc_url, created_at)
 			VALUES (?, ?, ?, ?, ?, ?)
@@ -422,8 +415,8 @@ func (h *AuthHandler) getMe(w http.ResponseWriter, r *http.Request) {
 		// Fallback to minimal identity
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"id":       userId,
-			"authVia":  authVia,
+			"id":      userId,
+			"authVia": authVia,
 		})
 		return
 	}

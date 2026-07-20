@@ -409,11 +409,11 @@ func (h *PluginsHandler) PostInstall(w http.ResponseWriter, r *http.Request) {
 	res := plugins.Resolve(pluginsList, hostCaps)
 	status := res.Status[manifest.ID]
 
-	var missingReasons []string
+	missingReasons := make([]string, 0)
 	for _, m := range status.Missing {
 		missingReasons = append(missingReasons, plugins.ExplainMissingHostCapability(h.cfg, m))
 	}
-	var unmetWantsReasons []string
+	unmetWantsReasons := make([]string, 0)
 	for _, m := range status.UnmetWants {
 		unmetWantsReasons = append(unmetWantsReasons, plugins.ExplainMissingHostCapability(h.cfg, m))
 	}

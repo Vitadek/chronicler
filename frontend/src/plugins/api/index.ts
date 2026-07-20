@@ -11,8 +11,7 @@
  * repos you trust. (See PLUGINS.md.)
  *
  * A plugin declares what it CONTRIBUTES; the host renders/registers it. Every
- * feature — including the ones core will eventually hand over (proofreader,
- * outliner, checkers, thesaurus…) — is a first-class citizen using these same
+ * feature — including proofreader, outliner, and checkers — is a first-class citizen using these same
  * slots.
  */
 import type React from 'react';
@@ -20,7 +19,7 @@ import type { Editor } from '@tiptap/react';
 import type { AnyExtension, Extension, Node, Mark } from '@tiptap/core';
 
 /** Bumped when the host makes a breaking change to this contract. */
-export const PLUGIN_API_VERSION = 3;
+export const PLUGIN_API_VERSION = 4;
 
 // ---------------------------------------------------------------------------
 // Dependencies — declared in chronicle-plugin.json, enforced by the server
@@ -32,24 +31,21 @@ export const PLUGIN_API_VERSION = 3;
  * `host:languagetool` means the sidecar ANSWERED, because LANGUAGETOOL_URL has
  * a default and is therefore always "set".
  */
-export type HostCapability = 'host:languagetool' | 'host:ai' | 'host:gemini';
+export type HostCapability = 'host:grammar' | 'host:languagetool';
 
 /** Built-in features a plugin can supersede via `replaces`. */
 export type CoreCapability =
   | 'core:grammar'
-  | 'core:tense'
   | 'core:autocorrect'
   | 'core:outliner'
-  | 'core:proofreader'
-  | 'core:thesaurus'
-  | 'core:issues';
+  | 'core:proofreader';
 
 /**
  * The dependency half of chronicle-plugin.json.
  *
  *   "provides":  ["checker", "checker:grammar"],
  *   "requires":  ["host:languagetool"],   // hard — refuses to enable without it
- *   "wants":     ["host:ai"],             // soft — enables, flagged "limited"
+ *   "wants":     ["checker:style"],        // soft — enables, flagged "limited"
  *   "conflicts": ["checker:grammar"],     // no second grammar checker
  *   "replaces":  ["core:grammar"],        // shadow the built-in while enabled
  *   "dependencies": { "leven": "^4.0.0" } // npm, installed at build time
@@ -91,8 +87,7 @@ export interface PluginStateApi<S = Record<string, unknown>> {
 
 /**
  * The findings bus: how a checker plugin hands results to a panel plugin
- * without the two importing each other. The grammar/tense plugins publish;
- * the issues panel subscribes.
+ * without the two importing each other.
  */
 export interface FindingsBus {
   /** Replace this source's findings (empty array clears them). */
@@ -148,12 +143,6 @@ export interface PluginServices {
   grammar: {
     lint(text: string): Promise<{ start: number; end: number; kind: string; message: string; replacements?: string[] }[]>;
   };
-  /** Server-mediated AI. Absent when AI is disabled or AI_UI=off — always null-check. */
-  ai: {
-    available: boolean;
-    /** Free-form prompt → text. Throws with the server's message on failure. */
-    respond(prompt: string, system?: string): Promise<string>;
-  };
   /** The user's synced settings store (survives updates + follows devices). */
   settings: {
     get(key: string): string | null;
@@ -181,13 +170,13 @@ export type PluginIcon = React.ComponentType<{ className?: string }>;
 
 /**
  * TipTap extensions merged into every editor the app builds.
- * Unblocks: autocorrect, grammar check, tense check.
+ * Unblocks: autocorrect and grammar checks.
  */
 export type EditorExtensionsSlot = (ctx: PluginContext) => AnyExtension[];
 
 /**
  * A tab in the manuscript sidebar.
- * Unblocks: issues panel, the outliner pane (plot/characters/outline).
+ * Unblocks sidebar panels such as the outliner.
  */
 export interface SidebarTabContribution {
   id: string;
@@ -220,7 +209,7 @@ export interface LibraryActionContribution {
 
 /**
  * An action on the selection bubble menu.
- * Unblocks: the thesaurus.
+ * Unblocks selection-oriented tools.
  */
 export interface SelectionActionContribution {
   id: string;
@@ -241,7 +230,7 @@ export interface SlashCommandContribution {
 
 /**
  * A checker that publishes findings to the host's results bus, so any panel
- * (e.g. a future issues plugin) can consume them without knowing the producer.
+ * consumers can use without knowing the producer.
  */
 export interface CheckerContribution {
   id: string;
@@ -253,7 +242,7 @@ export interface CheckerContribution {
 export interface PluginFinding {
   start: number;
   end: number;
-  /** Free-form category, e.g. 'misspelling' | 'tense' | 'clarity'. */
+  /** Free-form category, e.g. 'misspelling' | 'style'. */
   kind: string;
   message: string;
   /** Optional one-click fixes. Rendering hosts may ignore these. */

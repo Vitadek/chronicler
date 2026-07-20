@@ -6,9 +6,6 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
-    // NOTE: deliberately no `define` for API keys. AI runs server-side
-    // (pkg/api/ai.go); injecting any *_API_KEY here would bake the secret into
-    // the shipped client JS — a real leak once the repo is public.
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
@@ -27,8 +24,7 @@ export default defineConfig(() => {
       emptyOutDir: true,
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modify - file watching is disabled to prevent flickering during agent edits.
+      // HMR can be disabled with DISABLE_HMR for constrained environments.
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},

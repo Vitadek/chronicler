@@ -2,7 +2,7 @@
  * One-shot localStorage key migration: scribe_* → chronicle_*.
  *
  * Runs once per browser (gated by a sentinel key). The product was
- * previously named "Scribe", and all prefs / sync cursors / AI configs
+ * previously named "Scribe", and preferences plus sync cursors
  * sit under that prefix in users' browsers. After this migration, only
  * the chronicle_* keys exist; the scribe_* originals are removed.
  *

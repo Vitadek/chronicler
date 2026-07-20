@@ -23,8 +23,6 @@
 //     chronicle/src/lib/Grammar.ts).
 //   - "style" is advisory and renders blue.
 //
-// Tense consistency is NOT handled here: it runs client-side in
-// chronicle/src/lib/TenseShift.ts and is unaffected by this package.
 package grammar
 
 // Hit kinds. These strings are a contract with the frontend — see the package

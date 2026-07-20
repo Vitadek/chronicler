@@ -64,7 +64,7 @@ export interface InstallResult {
 /** Everything GET /api/plugins returns: the list, plus its resolution. */
 export interface PluginState {
   plugins: InstalledPlugin[];
-  /** Host services currently available (`host:languagetool`, `host:ai`, …). */
+  /** Host services currently available (`host:grammar`, …). */
   hostCapabilities: string[];
   /** `core:*` features suppressed because an enabled plugin replaces them. */
   shadowedCore: string[];

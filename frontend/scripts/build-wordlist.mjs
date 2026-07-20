@@ -2,7 +2,7 @@
 /**
  * Regenerates src/lib/autocomplete/wordlist.ts from Peter Norvig's unigram
  * counts (Google Web Trillion Word Corpus) — the standard frequency source
- * for non-AI completion and spelling work.
+ * for local completion and spelling work.
  *
  *   node scripts/build-wordlist.mjs [path-to-count_1w.txt]
  *

@@ -6,7 +6,7 @@
 //
 // Candidates and ranking live in autocomplete/engine.ts: the document's own
 // vocabulary and word pairs first, then a 25k-word frequency-ranked English
-// list (lazy-loaded on first use so the main bundle doesn't carry it). No AI,
+// list (lazy-loaded on first use so the main bundle doesn't carry it).
 // no network, no debounce — the lookup is synchronous and cheap enough to run
 // inside every transaction.
 

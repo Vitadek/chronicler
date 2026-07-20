@@ -23,9 +23,8 @@ import { authFetch } from '../services/authService';
 /**
  * The preference keys that sync. Deliberately excluded:
  *  - chronicle_token / chronicle_oidc_* — auth material, never leaves the device
- *  - chronicle_ai_config_v* — may hold API keys; the UI promises those stay local
- *  - chronicle_ai_ui_hidden — cache of the server's own AI_UI flag
- *  - chronicle_chars_/plotnodes_/plotedges_/ai_outline_* — per-manuscript data,
+ *  - obsolete feature preferences — retained in storage but ignored
+ *  - chronicle_chars_/plotnodes_/plotedges_* — per-manuscript data,
  *    persisted through the manuscript store
  *  - chronicle_sync_* / chronicle_migrated_v* — machine-local cursors
  */
@@ -33,14 +32,9 @@ export const SYNCED_SETTINGS_KEYS = [
   'chronicle_theme',
   'chronicle_autocomplete',
   'chronicle_autocorrect',
-  'chronicle_tense_check',
   'chronicle_grammar_check',
-  'chronicle_issues_panel',
-  'chronicle_thesaurus',
   'chronicle_zen_mode',
   'chronicle_first_line_indent',
-  'chronicle_ai_enabled',
-  'chronicle_ai_bubble_menu',
   'chronicle_touch_controls',
   'chronicle_manuscript_font',
   'chronicle_export_settings',

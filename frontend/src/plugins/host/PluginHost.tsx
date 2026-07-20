@@ -9,8 +9,6 @@ import type {
 } from '../api';
 import { pluginService, type InstalledPlugin } from '../../services/pluginService';
 import { lintText } from '../../lib/grammar/languagetool';
-import { getAiResponse } from '../../services/aiService';
-import type { AiConfig } from '../../services/aiConfig';
 import { authFetch } from '../../services/authService';
 
 /** A plugin that loaded successfully, with its live contributions. */
@@ -23,8 +21,6 @@ export interface LoadedPlugin {
 export interface PluginRuntime {
   manuscriptId: string | null;
   editor: Editor | null;
-  aiConfig: AiConfig | null;
-  aiAvailable: boolean;
   onToast?: (message: string, kind?: 'info' | 'error') => void;
 }
 
@@ -41,7 +37,7 @@ interface PluginHostValue {
    * render sites consult this and stand down — see useCoreFeature.
    */
   shadowedCore: Set<string>;
-  /** Host services currently available (`host:languagetool`, `host:ai`, …). */
+  /** Host services currently available (`host:grammar`, …). */
   hostCapabilities: string[];
   refresh: () => Promise<void>;
   setEnabled: (id: string, enabled: boolean) => Promise<void>;
@@ -49,7 +45,7 @@ interface PluginHostValue {
   reportError: (id: string, message: string) => void;
   /** Build the context a contribution runs with. */
   makeContext: (pluginId: string) => PluginContext;
-  /** App publishes its live editor/manuscript/AI values here. */
+  /** App publishes its live editor/manuscript values here. */
   publishRuntime: (runtime: PluginRuntime) => void;
   /** Full-page view routing (a plugin's `views` slot). */
   activeView: { pluginId: string; viewId: string; manuscriptId: string | null } | null;
@@ -107,7 +103,7 @@ export function usePluginSlot<K extends keyof PluginContributions>(
 
 /**
  * Wraps the whole app ONCE (see App.tsx). It deliberately takes no live props:
- * the app publishes its editor/manuscript/AI values through
+ * the app publishes its editor/manuscript values through
  * `usePublishPluginRuntime`. If the host took them as props it would have to sit
  * inside App's branch returns — remounting, and so re-fetching and re-activating
  * every plugin, on each navigation.
@@ -126,8 +122,6 @@ export const PluginHost: React.FC<{ children: React.ReactNode }> = ({ children }
   const liveRef = useRef<PluginRuntime>({
     manuscriptId: null,
     editor: null,
-    aiConfig: null,
-    aiAvailable: false,
   });
   const publishRuntime = useCallback((runtime: PluginRuntime) => {
     liveRef.current = runtime;
@@ -199,19 +193,6 @@ export const PluginHost: React.FC<{ children: React.ReactNode }> = ({ children }
     },
     grammar: {
       lint: (text: string) => lintText(text),
-    },
-    ai: {
-      get available() {
-        return liveRef.current.aiAvailable;
-      },
-      respond: async (prompt: string, system?: string) => {
-        const cfg = liveRef.current.aiConfig;
-        if (!liveRef.current.aiAvailable || !cfg) {
-          throw new Error('AI is not available on this instance.');
-        }
-        const result = await getAiResponse(prompt, cfg, system);
-        return typeof result === 'string' ? result : JSON.stringify(result);
-      },
     },
     settings: {
       get: (key: string) => localStorage.getItem(`chronicle_plugin_${key}`),
@@ -322,9 +303,7 @@ export const PluginHost: React.FC<{ children: React.ReactNode }> = ({ children }
       }
 
       // …but ACTIVATE in the server's dependency order, sequentially. A plugin
-      // that requires (or wants) another must see it already active — the Issues
-      // Panel subscribing to the findings bus before Grammar Check has published
-      // to it is the whole reason this isn't a Promise.all.
+      // that requires (or wants) another must see it already active.
       for (const id of activationOrder) {
         const plugin = modules.get(id);
         const info = byId.get(id);

@@ -4,9 +4,7 @@ import Focus from '@tiptap/extension-focus';
 import BubbleMenuExtension from '@tiptap/extension-bubble-menu';
 import { Autocomplete } from '../lib/Autocomplete';
 import { CommandLine } from '../lib/CommandLine';
-import { TenseShift, type TenseShiftHit } from '../lib/TenseShift';
 import { Grammar, type GrammarMark } from '../lib/Grammar';
-import { AiGrammar } from '../lib/AiGrammar';
 import { ProofreadHighlight } from '../lib/ProofreadHighlight';
 import { buildCoreExtensions, EDITOR_KEYBOARD_ATTRS } from '../lib/editorExtensions';
 import { autocompleteKey } from '../lib/Autocomplete';
@@ -23,11 +21,6 @@ export interface UseChronicleEditorProps {
    *  autocomplete ghost-text). Keyboard-control attributes below are set
    *  unconditionally since desktop browsers ignore the mobile-only ones. */
   isTouchUI?: boolean;
-  /** Live wavy-underline flagging of sentences that drift from a paragraph's
-   *  dominant narrative tense (local, deterministic — see lib/TenseShift.ts). */
-  isTenseCheckEnabled?: boolean;
-  /** Receives the current set of tense-shift hits after each recompute. */
-  onTenseShifts?: (hits: TenseShiftHit[]) => void;
   /** Live grammar/style squiggles via the server LanguageTool proxy (lib/Grammar.ts). */
   isGrammarCheckEnabled?: boolean;
   /** Receives the current marks after each recompute ('lint') or when the
@@ -39,7 +32,7 @@ export interface UseChronicleEditorProps {
    * TipTap extensions contributed by enabled plugins (the `editorExtensions`
    * slot). Passed in by the caller rather than read from context here, so this
    * hook stays usable outside the plugin host (e.g. the mobile editor bundle).
-   * This is the seam the grammar/tense/autocorrect checkers will move through.
+   * This is the seam grammar/autocorrect checkers move through.
    */
   pluginExtensions?: AnyExtension[];
   /**
@@ -57,8 +50,6 @@ export function useChronicleEditor({
   isAutocompleteEnabled = false,
   commandLineOptions,
   isTouchUI = false,
-  isTenseCheckEnabled = false,
-  onTenseShifts,
   isGrammarCheckEnabled = false,
   onGrammarMarks,
   isAutoCorrectEnabled = true,
@@ -69,10 +60,6 @@ export function useChronicleEditor({
   // stays in sync (smart quotes, no-stray-space, marks). The web-only
   // interactive layer (focus dimming, autocomplete ghost-text, the #! command
   // portal, selection bubble) is layered on top here.
-  // Keep the latest onTenseShifts callback in a ref so the extensions array
-  // (rebuilt only when placeholder changes) always calls the current one.
-  const onTenseShiftsRef = useRef(onTenseShifts);
-  onTenseShiftsRef.current = onTenseShifts;
   const onGrammarMarksRef = useRef(onGrammarMarks);
   onGrammarMarksRef.current = onGrammarMarks;
 
@@ -82,15 +69,10 @@ export function useChronicleEditor({
       className: 'has-focus',
       mode: 'all',
     }),
-    TenseShift.configure({
-      enabled: false, // toggled at runtime via the effect below
-      onShifts: (hits) => onTenseShiftsRef.current?.(hits),
-    }),
     Grammar.configure({
       enabled: false, // toggled at runtime via the effect below
       onMarks: (marks, reason) => onGrammarMarksRef.current?.(marks, reason),
     }),
-    AiGrammar, // on-demand pass; marks set imperatively from the Issues panel
     ProofreadHighlight, // current-issue emphasis in Proofread mode; no-op elsewhere
     Autocomplete,
     CommandLine.configure({
@@ -156,12 +138,6 @@ export function useChronicleEditor({
 
   useEffect(() => {
     if (editor && !editor.isDestroyed) {
-      editor.commands.setTenseCheck(isTenseCheckEnabled);
-    }
-  }, [isTenseCheckEnabled, editor]);
-
-  useEffect(() => {
-    if (editor && !editor.isDestroyed) {
       editor.commands.setGrammarCheck(isGrammarCheckEnabled);
     }
   }, [isGrammarCheckEnabled, editor]);
@@ -174,4 +150,3 @@ export function useChronicleEditor({
 
   return editor;
 }
-

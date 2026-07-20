@@ -38,13 +38,6 @@ type Config struct {
 	Nextcloud    NextcloudConfig
 	Storage      StorageConfig
 	S3           S3Config
-	OpenAIKey    string
-	AnthropicKey string
-	GeminiKey    string
-	AIModel      string
-	AIUIEnabled  bool
-	AudioModel   string
-	AudioVoice   string
 }
 
 type AuthConfig struct {
@@ -164,7 +157,7 @@ func LoadConfig() (*Config, error) {
 
 	legacyStorageProvider := strings.TrimSpace(strings.ToLower(envString("STORAGE_PROVIDER", "")))
 	configuredStorageReplica := strings.TrimSpace(strings.ToLower(envString("STORAGE_REPLICA", "")))
-	
+
 	var rawStorageReplica StorageReplica
 	if configuredStorageReplica != "" {
 		rawStorageReplica = StorageReplica(configuredStorageReplica)
@@ -176,12 +169,6 @@ func LoadConfig() (*Config, error) {
 		} else {
 			rawStorageReplica = StorageReplica(legacyStorageProvider)
 		}
-	}
-
-	aiUI := strings.ToLower(envString("AI_UI", "on"))
-	aiUiEnabled := true
-	if aiUI == "off" || aiUI == "false" || aiUI == "0" || aiUI == "no" {
-		aiUiEnabled = false
 	}
 
 	cfg := &Config{
@@ -241,13 +228,6 @@ func LoadConfig() (*Config, error) {
 			ServerSideEncryption: envString("S3_SERVER_SIDE_ENCRYPTION", ""),
 			KmsKeyId:             envString("S3_KMS_KEY_ID", ""),
 		},
-		OpenAIKey:    envString("OPENAI_API_KEY", ""),
-		AnthropicKey: envString("ANTHROPIC_API_KEY", ""),
-		GeminiKey:    envString("GEMINI_API_KEY", ""),
-		AIModel:      envString("AI_MODEL", "gpt-4o"),
-		AIUIEnabled:  aiUiEnabled,
-		AudioModel:   envString("AUDIO_MODEL", "gpt-4o-mini-tts"),
-		AudioVoice:   envString("AUDIO_VOICE", "alloy"),
 	}
 
 	// Validate configuration at boot

@@ -168,14 +168,6 @@ func (sr *ServerRouter) Init() http.Handler {
 				subR.ServeHTTP(w, r)
 			}))
 
-			// AI Endpoints
-			aiH := NewAiHandler(sr.cfg, sr.database)
-			authGroup.Mount("/ai", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				subR := chi.NewRouter()
-				aiH.Mount(subR)
-				subR.ServeHTTP(w, r)
-			}))
-
 			// Covers Endpoints
 			coversH := NewCoversHandler(sr.cfg, sr.database)
 			authGroup.Mount("/covers", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
