@@ -301,11 +301,19 @@ func PullRepo(pluginsDir string, id string) error {
 		return err
 	}
 
-	// Hard checkout/reset
-	return w.Reset(&git.ResetOptions{
-		Commit: remoteRef.Hash(),
+	return hardResetPreservingMeta(w, dir, remoteRef.Hash(), meta)
+}
+
+func hardResetPreservingMeta(w *git.Worktree, dir string, commit plumbing.Hash, meta RepoMeta) error {
+	// go-git's hard reset removes the untracked Chronicle metadata file, so
+	// restore it or the next update will treat this git install as local.
+	if err := w.Reset(&git.ResetOptions{
+		Commit: commit,
 		Mode:   git.HardReset,
-	})
+	}); err != nil {
+		return err
+	}
+	return WriteMeta(dir, meta)
 }
 
 func PinRepo(pluginsDir string, id string, ref *string) error {
