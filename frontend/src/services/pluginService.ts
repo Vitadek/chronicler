@@ -72,6 +72,38 @@ export interface PluginState {
   activationOrder: string[];
 }
 
+/**
+ * Older Chronicle servers and early Go builds encoded empty slices as `null`.
+ * Keep this boundary tolerant so opening Settings cannot crash while rendering
+ * dependency badges for an already-installed plugin. All consumers receive the
+ * current contract (`[]` for every collection), regardless of server vintage.
+ */
+export function normalizePluginState(value: Partial<PluginState> | null | undefined): PluginState {
+  const plugins = Array.isArray(value?.plugins) ? value.plugins : [];
+  return {
+    plugins: plugins.map((plugin) => ({
+      ...plugin,
+      provides: Array.isArray(plugin.provides) ? plugin.provides : [],
+      requires: Array.isArray(plugin.requires) ? plugin.requires : [],
+      wants: Array.isArray(plugin.wants) ? plugin.wants : [],
+      conflicts: Array.isArray(plugin.conflicts) ? plugin.conflicts : [],
+      replaces: Array.isArray(plugin.replaces) ? plugin.replaces : [],
+      dependencies: plugin.dependencies && typeof plugin.dependencies === 'object' ? plugin.dependencies : {},
+      incoming: Array.isArray(plugin.incoming) ? plugin.incoming : [],
+      missingReasons: Array.isArray(plugin.missingReasons) ? plugin.missingReasons : [],
+      unmetWantsReasons: Array.isArray(plugin.unmetWantsReasons) ? plugin.unmetWantsReasons : [],
+      status: {
+        missing: Array.isArray(plugin.status?.missing) ? plugin.status.missing : [],
+        unmetWants: Array.isArray(plugin.status?.unmetWants) ? plugin.status.unmetWants : [],
+        conflictsWith: Array.isArray(plugin.status?.conflictsWith) ? plugin.status.conflictsWith : [],
+      },
+    })),
+    hostCapabilities: Array.isArray(value?.hostCapabilities) ? value.hostCapabilities : [],
+    shadowedCore: Array.isArray(value?.shadowedCore) ? value.shadowedCore : [],
+    activationOrder: Array.isArray(value?.activationOrder) ? value.activationOrder : [],
+  };
+}
+
 async function json<T>(res: Response, what: string): Promise<T> {
   if (!res.ok) {
     let msg = `${what} failed`;
@@ -90,7 +122,7 @@ export const pluginService = {
   /** The installed list AND the server's dependency resolution for it. */
   async list(): Promise<PluginState> {
     const res = await authFetch('/api/plugins');
-    return json<PluginState>(res, 'Listing plugins');
+    return normalizePluginState(await json<PluginState>(res, 'Listing plugins'));
   },
 
   /**

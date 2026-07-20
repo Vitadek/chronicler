@@ -46,11 +46,11 @@ func (h *PluginsHandler) Mount(r chi.Router) {
 }
 
 type UserPluginState struct {
-	ID           string `db:"id"`
-	PluginID     string `db:"plugin_id"`
+	ID           string  `db:"id"`
+	PluginID     string  `db:"plugin_id"`
 	ManuscriptID *string `db:"manuscript_id"`
-	Enabled      int    `db:"enabled"`
-	State        string `db:"state"`
+	Enabled      int     `db:"enabled"`
+	State        string  `db:"state"`
 }
 
 func recordId(pluginId string, manuscriptId *string) string {
@@ -68,7 +68,7 @@ func (h *PluginsHandler) userRows(userId string) ([]UserPluginState, error) {
 	}
 	defer rows.Close()
 
-	var states []UserPluginState
+	states := make([]UserPluginState, 0)
 	for rows.Next() {
 		var s UserPluginState
 		if err := rows.Scan(&s.ID, &s.PluginID, &s.ManuscriptID, &s.Enabled, &s.State); err == nil {
@@ -87,7 +87,7 @@ func (h *PluginsHandler) listForUser(userId string) ([]plugins.ResolveInput, err
 	pluginsDir := filepath.Join(h.cfg.DataDir, "plugins")
 	installed := plugins.InstalledIDs(pluginsDir)
 
-	var list []plugins.ResolveInput
+	list := make([]plugins.ResolveInput, 0)
 	for _, id := range installed {
 		disk, err := plugins.DescribePlugin(pluginsDir, id)
 		if err != nil || disk == nil {
@@ -188,7 +188,7 @@ func (h *PluginsHandler) GetPlugins(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pluginsDir := filepath.Join(h.cfg.DataDir, "plugins")
-	var responsePlugins []map[string]interface{}
+	responsePlugins := make([]map[string]interface{}, 0)
 
 	for _, p := range pluginsList {
 		disk, _ := plugins.DescribePlugin(pluginsDir, p.ID)
@@ -197,12 +197,12 @@ func (h *PluginsHandler) GetPlugins(w http.ResponseWriter, r *http.Request) {
 		}
 
 		status := resolution.Status[p.ID]
-		var missingReasons []string
+		missingReasons := make([]string, 0)
 		for _, m := range status.Missing {
 			missingReasons = append(missingReasons, plugins.ExplainMissingHostCapability(h.cfg, m))
 		}
 
-		var unmetWantsReasons []string
+		unmetWantsReasons := make([]string, 0)
 		for _, m := range status.UnmetWants {
 			unmetWantsReasons = append(unmetWantsReasons, plugins.ExplainMissingHostCapability(h.cfg, m))
 		}

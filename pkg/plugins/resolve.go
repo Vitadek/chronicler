@@ -17,12 +17,12 @@ var CoreCapabilities = []string{
 }
 
 type PluginDeps struct {
-	ID        string            `json:"id"`
-	Provides  []string          `json:"provides"`
-	Requires  []string          `json:"requires"`
-	Wants     []string          `json:"wants"`
-	Conflicts []string          `json:"conflicts"`
-	Replaces  []string          `json:"replaces"`
+	ID        string   `json:"id"`
+	Provides  []string `json:"provides"`
+	Requires  []string `json:"requires"`
+	Wants     []string `json:"wants"`
+	Conflicts []string `json:"conflicts"`
+	Replaces  []string `json:"replaces"`
 }
 
 type ResolveInput struct {
@@ -127,7 +127,7 @@ func statusFor(
 		}
 	}
 
-	var conflictsWith []ConflictOwnership
+	conflictsWith := make([]ConflictOwnership, 0)
 	for _, c := range seen {
 		conflictsWith = append(conflictsWith, c)
 	}
@@ -140,14 +140,14 @@ func statusFor(
 		return conflictsWith[i].Capability < conflictsWith[j].Capability
 	})
 
-	var missing []string
+	missing := make([]string, 0)
 	for _, cap := range plugin.Requires {
 		if !has(cap) {
 			missing = append(missing, cap)
 		}
 	}
 
-	var unmetWants []string
+	unmetWants := make([]string, 0)
 	for _, cap := range plugin.Wants {
 		if !has(cap) {
 			unmetWants = append(unmetWants, cap)
@@ -183,7 +183,7 @@ func orderActivation(live []ResolveInput) ([]string, map[string]string) {
 		soft[p.ID] = ownersOf(p, p.Wants)
 	}
 
-	var order []string
+	order := make([]string, 0)
 	pending := make(map[string]bool)
 	for _, p := range live {
 		pending[p.ID] = true
@@ -261,7 +261,7 @@ func Resolve(plugins []ResolveInput, hostCaps []string) Resolution {
 			shadowedCoreMap[r] = true
 		}
 	}
-	var shadowedCore []string
+	shadowedCore := make([]string, 0)
 	for r := range shadowedCoreMap {
 		shadowedCore = append(shadowedCore, r)
 	}
