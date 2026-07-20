@@ -165,6 +165,29 @@ func TestProcessDueBoundsRemoteConcurrency(t *testing.T) {
 	}
 }
 
+func TestNextStorageGenerationUsesPortableManifest(t *testing.T) {
+	database := initTestDB(t)
+	defer database.Close()
+	portableKey := "v1/users/user-1/settings.json"
+	if err := EnqueueAtGeneration(database, portableKey, "put", 7, []byte(`{"theme":"dark"}`), "application/json", "old"); err != nil {
+		t.Fatal(err)
+	}
+	generation, err := NextStorageGeneration(database, "settings/user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if generation != 8 {
+		t.Fatalf("next generation = %d, want 8", generation)
+	}
+	var stored int
+	if err := database.QueryRow("SELECT generation FROM storage_replica_generations WHERE key = ?", portableKey).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != generation {
+		t.Fatalf("portable generation counter = %d, want %d", stored, generation)
+	}
+}
+
 func TestReconciliationAndSeeding(t *testing.T) {
 	db := initTestDB(t)
 	defer db.Close()

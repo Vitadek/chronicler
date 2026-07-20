@@ -62,12 +62,19 @@ func PortableReplicaKey(key string) string {
 }
 
 func NextStorageGeneration(q Queryable, key string) (int, error) {
+	replicaKey := PortableReplicaKey(key)
 	var gen int
 	err := q.QueryRow(`
-		INSERT INTO storage_replica_generations(key, generation) VALUES (?, 1)
-		ON CONFLICT(key) DO UPDATE SET generation = generation + 1
+		INSERT INTO storage_replica_generations(key, generation)
+		VALUES (?, COALESCE((
+			SELECT generation + 1 FROM storage_replica_manifest WHERE key = ?
+		), 1))
+		ON CONFLICT(key) DO UPDATE SET generation = MAX(
+			storage_replica_generations.generation + 1,
+			COALESCE((SELECT generation + 1 FROM storage_replica_manifest WHERE key = ?), 1)
+		)
 		RETURNING generation
-	`, key).Scan(&gen)
+	`, replicaKey, replicaKey, replicaKey).Scan(&gen)
 	return gen, err
 }
 
