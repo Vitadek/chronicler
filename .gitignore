@@ -8,10 +8,8 @@ chronicle-server
 .env
 **/.env
 
-# Frontend dependencies and generated output. `npm run build` recreates web/
-# before local Go builds; the Dockerfile does this in its pinned Node stage.
+# Frontend dependencies. Node modules remain ignored.
 frontend/node_modules/
-web/
 
 # Formal-suite run output (regenerated each run; may contain database snapshots).
 tests/formal/artifacts/*
