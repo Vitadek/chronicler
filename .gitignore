@@ -17,3 +17,9 @@ web/
 tests/formal/artifacts/*
 !tests/formal/artifacts/.gitkeep
 tests/formal/node_modules/
+
+# Browser (Playwright) tier -- same pattern as the formal suite above.
+tests/formal/browser/artifacts/*
+!tests/formal/browser/artifacts/.gitkeep
+tests/formal/browser/node_modules/
+tests/formal/browser/test-results/

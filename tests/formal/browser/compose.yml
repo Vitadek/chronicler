@@ -1,0 +1,40 @@
+name: chronicle-formal-browser
+
+# Standalone -- deliberately NOT layered on ../compose.yml. None of the 7
+# TESTPLAN.md cases touch S3/Nextcloud replication, so pulling in MinIO +
+# Toxiproxy would only slow the run for zero added coverage. See
+# ../README.md's "Browser tier" note: this stays outside the main gate.
+
+services:
+  chronicle:
+    image: ${CHRONICLE_IMAGE:-chronicler:latest}
+    pull_policy: never
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATA_DIR: /data
+      AUTH_MODE: none
+      ALLOW_INSECURE_NO_AUTH: "true"
+      STORAGE_REPLICA: none
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 2s
+
+  playwright:
+    image: mcr.microsoft.com/playwright@sha256:2f29369043d81d6d69a815ceb80760f55e85f5020371ad06a4d996f18503ad1c
+    working_dir: /work
+    environment:
+      CHRONICLE_URL: http://chronicle:3000
+      REPORT_DIR: /artifacts
+    volumes:
+      - ./:/work
+      - ./artifacts:/artifacts
+    depends_on:
+      chronicle:
+        condition: service_healthy
+    # No command here -- run.sh invokes `docker compose run playwright ...`
+    # directly with the real test command each time.

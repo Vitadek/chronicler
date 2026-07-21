@@ -1,0 +1,36 @@
+name: Browser tests (Playwright, informational)
+
+# Deliberately NOT wired into tests/formal/run.sh's release gate -- see
+# tests/formal/README.md's "Browser tier" note. This workflow reports
+# pass/fail on every push/PR but is not a required status check; don't add
+# it as one in the repo's branch protection settings without first
+# confirming the 7 cases have run flake-free for a while.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  browser-tests:
+    name: Playwright browser tier
+    runs-on: docker-cli
+    steps:
+      - name: Checkout
+        uses: https://data.forgejo.org/actions/checkout@v6
+
+      - name: Build Chronicler image
+        run: docker build -t "chronicler:ci-${{ forgejo.sha }}" .
+
+      - name: Run Playwright browser tier
+        env:
+          CHRONICLE_IMAGE: chronicler:ci-${{ forgejo.sha }}
+        run: ./tests/formal/browser/run.sh
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: https://data.forgejo.org/actions/upload-artifact@v4
+        with:
+          name: browser-tier-artifacts
+          path: tests/formal/browser/artifacts/

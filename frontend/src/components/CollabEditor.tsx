@@ -85,6 +85,7 @@ export const CollabEditor: React.FC<CollabEditorProps> = ({
           editorProps: {
             attributes: {
               class: 'novel-editor-content focus:outline-none min-h-[500px]',
+              'data-testid': 'collab-editor-content',
               ...EDITOR_KEYBOARD_ATTRS,
             },
           },

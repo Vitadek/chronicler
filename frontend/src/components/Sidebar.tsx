@@ -169,6 +169,7 @@ const SortableChapter: React.FC<SortableChapterProps> = ({
                 e.stopPropagation();
                 setConfirmDeleteId(null);
               }}
+              aria-label="Cancel"
               className="p-1 rounded-md hover:bg-black/10 dark:hover:bg-white/10"
             >
               <X className="w-3.5 h-3.5" />
@@ -407,8 +408,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <>
       <div className="fixed top-8 left-8 z-[60] ui-element-container h-24 w-24 -mt-8 -ml-8 safe-pad-toggle flex items-center justify-center group pointer-events-none hover:pointer-events-auto">
         <div className="absolute top-8 left-8 w-1 h-8 bg-black/5 dark:bg-white/5 rounded-r-full group-hover:opacity-0 transition-opacity hidden sm:block" />
-        <button 
+        <button
           onClick={onToggle}
+          aria-label={isOpen ? 'Close sidebar' : 'Open sidebar'}
           className={cn(
             "p-3 rounded-full shadow-lg transition-all hover:scale-110 active:scale-95 ui-element pointer-events-auto",
             isDarkMode ? "bg-white text-black" : "bg-black text-white"
@@ -649,8 +651,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         />
 
                         <div>
-                          <label className="block text-[10px] uppercase tracking-widest font-bold opacity-30 mb-2">Manuscript Title</label>
-                          <input 
+                          <label htmlFor="manuscript-title-input" className="block text-[10px] uppercase tracking-widest font-bold opacity-30 mb-2">Manuscript Title</label>
+                          <input
+                            id="manuscript-title-input"
                             type="text"
                             value={metadata.title}
                             onChange={(e) => onUpdateMetadata({ title: e.target.value })}
