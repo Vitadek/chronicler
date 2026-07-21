@@ -76,21 +76,30 @@ export const CollabEditor: React.FC<CollabEditorProps> = ({
   // server bumps this chapter's revision on every collab snapshot and every
   // remote collaborator's keystroke would also replay as local autosave
   // traffic via the shared Y.Doc's 'update' event.
+  // Always build a VALID schema, even before the Y.Doc session exists. The
+  // Collaboration binding is the only part that must wait for the session;
+  // the prose schema (Document/Paragraph/Text + marks) must be present from
+  // the first render. Passing `extensions: []` here threw "Schema is missing
+  // its top node type ('doc')" synchronously in the Editor constructor —
+  // getSchemaByResolvedExtensions finds no topNode and ProseMirror rejects
+  // the empty schema — which crashed the whole editor tree on mount, before
+  // the effect that creates the session could ever run. useEditor recreates
+  // on the [session] dep, so the throwaway pre-session editor is replaced by
+  // the Collaboration-bound one the moment the provider is ready.
   const editor = useEditor(
-    session
-      ? {
-          extensions: buildCoreExtensions({
-            collabExtension: Collaboration.configure({ document: session.ydoc }),
-          }),
-          editorProps: {
-            attributes: {
-              class: 'novel-editor-content focus:outline-none min-h-[500px]',
-              'data-testid': 'collab-editor-content',
-              ...EDITOR_KEYBOARD_ATTRS,
-            },
-          },
-        }
-      : { extensions: [], editable: false },
+    {
+      extensions: buildCoreExtensions(
+        session ? { collabExtension: Collaboration.configure({ document: session.ydoc }) } : {},
+      ),
+      editable: !!session,
+      editorProps: {
+        attributes: {
+          class: 'novel-editor-content focus:outline-none min-h-[500px]',
+          'data-testid': 'collab-editor-content',
+          ...EDITOR_KEYBOARD_ATTRS,
+        },
+      },
+    },
     [session],
   );
 
