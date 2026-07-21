@@ -16,7 +16,7 @@ x-formal-environment: &formal-environment
   AWS_REGION: us-east-1
   FORWARD_SECRET: chronicle-formal-forward-secret
   REPORT_DIR: /artifacts
-  CHRONICLE_IMAGE: ${CHRONICLE_IMAGE:-forgejo.lan/protoman/chronicle:core-candidate-20260713-r5}
+  CHRONICLE_IMAGE: ${CHRONICLE_IMAGE:-chronicler:latest}
 
 services:
   minio:
@@ -62,7 +62,7 @@ services:
 
 
   chronicle:
-    image: ${CHRONICLE_IMAGE:-forgejo.lan/protoman/chronicle:core-candidate-20260713-r5}
+    image: ${CHRONICLE_IMAGE:-chronicler:latest}
     pull_policy: never
     environment:
       NODE_ENV: production

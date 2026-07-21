@@ -6,7 +6,7 @@ ROOT_DIR=$(CDPATH= cd -- "$FORMAL_DIR/../.." && pwd)
 COMPOSE_FILE="$FORMAL_DIR/compose.yml"
 ARTIFACTS="$FORMAL_DIR/artifacts"
 
-export CHRONICLE_IMAGE=${CHRONICLE_IMAGE:-chronicle-go:latest}
+export CHRONICLE_IMAGE=${CHRONICLE_IMAGE:-chronicler:latest}
 # How to invoke the maintenance CLI inside the chronicle container. The Go
 # build exposes it as subcommands of the server binary; the retired Node build
 # needed `node dist/cli.cjs`. Overridable so this suite can still be pointed at

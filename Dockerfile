@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
 
 # --- Frontend stage -----------------------------------------------------------
-# Builds the React app into /src/web, which the Go stage then embeds. This must
-# run before the Go build: `//go:embed web/*` is resolved at compile time, so a
-# missing or stale web/ silently ships the wrong UI.
+# Builds the React app into /src/web, which the Go stage then embeds. Generated
+# web/ output is intentionally not committed; this stage is the release source
+# of truth and must run before `//go:embed web/*` is compiled.
 FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS frontend
 
 WORKDIR /src/frontend
@@ -30,8 +30,8 @@ COPY go.mod go.sum ./
 COPY vendor/ ./vendor/
 
 COPY . .
-# The frontend stage's output replaces whatever web/ was committed, so the
-# image always embeds a UI built from this commit's source.
+# The frontend stage supplies the generated directory omitted from the source
+# tree, so the image always embeds a UI built from this commit's frontend.
 COPY --from=frontend /src/web ./web
 
 # CGO_ENABLED=0 gives a static binary and, with `headless`, excludes the

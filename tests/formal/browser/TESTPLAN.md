@@ -1,6 +1,6 @@
 # Browser formal tier test plan
 
-The eventual `npm run test:formal:browser` tier will reuse the formal Compose
+The eventual `./tests/formal/browser/run.sh` tier will reuse the formal Compose
 stack and add a digest-pinned Playwright container. Its first contract cases
 are: stale library request suppression, coalesced autosave under latency,
 offline draft journal/reload recovery, explicit chapter deletion, a visible

@@ -63,7 +63,7 @@
   /* Only text/background colors animate (for light↔dark theme swaps).
      `transition-all` made every keystroke re-animate layout geometry
      (margin/padding/size/line-height), thrashing layout on WebKitGTK — the
-     Flatpak desktop stutter. Restricting to colors keeps typing latency-free. */
+     desktop-WebView stutter. Restricting to colors keeps typing latency-free. */
   @apply transition-colors duration-500;
   color: #1A1A1A;
 }

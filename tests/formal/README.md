@@ -2,15 +2,14 @@
 
 This suite treats the Chronicler OCI image as the product boundary. The app
 container receives only a named `/data` volume: Chronicler source is never bind
-mounted into it. The default candidate is
-`forgejo.lan/protoman/chronicle:core-candidate-20260713-r5`; select another exact
-candidate with `CHRONICLE_IMAGE`.
+mounted into it. The default candidate is the locally built
+`chronicler:latest`; select another exact candidate with `CHRONICLE_IMAGE`.
 
 Run the entire destructive, isolated suite from the repository root:
 
 ```sh
-npm run test:formal
-CHRONICLE_IMAGE=forgejo.lan/protoman/chronicle:ci-<commit> npm run test:formal
+./tests/formal/run.sh
+CHRONICLE_IMAGE=chronicler:ci-<commit> ./tests/formal/run.sh
 ```
 
 The harness creates and later removes its own Compose volumes. Do not point it
@@ -53,9 +52,8 @@ MinIO, MinIO Client, and Toxiproxy images.
   advanced revisions, legacy visibility, v2 epoch reset with a nonempty
   rejected mutation, collaboration non-resurrection, and deep verification.
 
-The gate contains 97 TAP cases: the original 72 cases, five boot preflights,
-eight pre-restore cases, and twelve post-restore cases. Every phase emits TAP
-plus a JSON report. `run.sh` always captures resolved
+The gate contains 98 TAP cases. Every phase emits TAP plus a JSON report.
+`run.sh` always captures resolved
 Compose configuration, full timestamped service logs, container status, exact
 image inspection, CLI outputs, and the test-only hot backup in
 `tests/formal/artifacts/`. The directory is ignored by Git.

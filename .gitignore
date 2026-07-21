@@ -8,9 +8,10 @@ chronicle-server
 .env
 **/.env
 
-# Frontend build tooling. web/ is NOT ignored — it is the embedded build
-# output that //go:embed requires at compile time.
+# Frontend dependencies and generated output. `npm run build` recreates web/
+# before local Go builds; the Dockerfile does this in its pinned Node stage.
 frontend/node_modules/
+web/
 
 # Formal-suite run output (regenerated each run; may contain database snapshots).
 tests/formal/artifacts/*

@@ -1,9 +1,10 @@
 # Chronicler deployment
 
-The release image is `forgejo.lan/protoman/chronicle-go:latest`. The immutable
-validated tag from 2026-07-20 is `release-20260720-core-lean`, digest
-`sha256:b40df22c4ccffc047bd0cdfe7622038801f4becf17ce68cb79b5e53fc1f3014a`.
-The legacy registry path remains in use during the Chronicler naming migration.
+The public release image is `ghcr.io/vitadek/chronicler:latest`. The immutable
+validated application tag from 2026-07-20 is `255af2d`, digest
+`sha256:dcde4edd74e82a22796ccc50e11d341768b651727cd06401cf77d9252cb16e93`.
+Pin the digest or immutable tag for production instead of allowing `latest` to
+change during an unattended restart.
 
 ## Quick start
 
@@ -22,6 +23,11 @@ For S3-compatible storage, set `STORAGE_REPLICA=s3`, the bucket, region,
 endpoint, credentials, and path-style options in `.env`. Plain HTTP endpoints
 are rejected unless `S3_ALLOW_INSECURE_HTTP=true`; use that override only on a
 trusted local network.
+
+See [`deploy/ENVIRONMENT.md`](deploy/ENVIRONMENT.md) for the complete variable
+reference, including forward-auth, OIDC, and Nextcloud replica configuration
+— `deploy/compose.yml` and `deploy/.env.example` wire through every variable
+it documents, so switching modes is a pure `.env` edit.
 
 ## Maintenance
 
@@ -43,12 +49,11 @@ docker compose start chronicle
 
 ## Validated release characteristics
 
-- OCI image: 16,237,654 bytes; static Go binary: 28,954,808 bytes.
-- Direct container restart to ready: about 693 ms on the validation host.
-- Warm local readiness and manuscript-list requests: about 0.7 ms average.
-- Complete 97-case destructive formal gate passed, including collaboration,
+- OCI image: 16,620,070 bytes; production runtime memory was about 115 MiB on
+  the validation host.
+- Complete 98-case destructive formal gate passed, including collaboration,
   S3 outage/retry, backup, restart durability, offline restore, and deep remote
   verification.
-- Persistent external MinIO validation passed before and after both restart
-  and image recreation, with 2/2 objects matching by content, checksum, and
-  generation.
+- Production MinIO validation passed before and after restart, with 32/32
+  objects matching by content, checksum, and generation and no pending or
+  dead-letter jobs.

@@ -1,0 +1,9 @@
+.git
+.gitignore
+frontend/node_modules
+tests/formal/node_modules
+tests/formal/artifacts
+web
+*.db
+*.db-journal
+*.db-wal

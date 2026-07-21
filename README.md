@@ -5,9 +5,10 @@ workstation. It combines a distraction-free TipTap editor with a
 multi-manuscript library, revision-aware sync, collaboration, exports, plugins,
 and an authoritative SQLite store in a small Go container.
 
-This repository is the maintained successor to Chronicle. The application is
-currently completing its naming transition, so some internal paths, environment
-variables, and image names still use `chronicle`.
+This repository is the maintained successor to Chronicle. Some durable internal
+environment-variable and database names retain `chronicle` for backward
+compatibility, while the application, repository, and published image are
+Chronicler.
 
 ## Screenshots
 
@@ -67,8 +68,9 @@ data.
 Global Config can download every manuscript and its cover art as a `.chron`
 archive, then add that library to another Chronicler account. The format is a
 versioned file hierarchy using balanced ZIP Deflate rather than a raw SQLite
-copy, so it remains portable across database migrations. Import is additive:
-existing IDs are brought in as clearly named copies and are never overwritten.
+copy, so it remains portable across database migrations. Import is additive and
+atomic: existing records are never overwritten, internal ID collisions receive
+safe new IDs, and `(Imported copy)` is added only for an actual title conflict.
 
 The default favors normal interactive export time over XZ's maximum compression.
 A representative 360,000-word regression must stay below 5 MiB before cover art;
@@ -78,13 +80,11 @@ codec plugins.
 
 ## Quick start with Docker
 
-Until the container registry completes the Chronicler naming migration, the
-most portable public workflow is to build the image from this repository:
+The public container is available from GHCR. The example uses the immutable
+validated tag; production deployments can pin the displayed digest as well:
 
 ```sh
-git clone https://github.com/Vitadek/chronicler.git
-cd chronicler
-docker build -t chronicler:local .
+docker pull ghcr.io/vitadek/chronicler:255af2d
 docker volume create chronicler-data
 export CHRONICLER_TOKEN="$(openssl rand -hex 32)"
 printf 'Chronicler token: %s\n' "$CHRONICLER_TOKEN"
@@ -95,15 +95,16 @@ docker run -d \
   -v chronicler-data:/data \
   -e AUTH_MODE=token \
   -e AUTH_TOKEN="$CHRONICLER_TOKEN" \
-  chronicler:local
+  ghcr.io/vitadek/chronicler:255af2d
 ```
 
 Open <http://localhost:3000>. Save the generated token before running the
 container if you need to enter it on another device. The `/data` volume contains
 the authoritative SQLite database and must be backed up.
 
-For a Compose template, S3 variables, health checks, and maintenance commands,
-see [DEPLOYMENT.md](DEPLOYMENT.md) and [`deploy/`](deploy/). Production
+For a Compose template, the full environment variable reference, health
+checks, and maintenance commands, see [DEPLOYMENT.md](DEPLOYMENT.md),
+[`deploy/ENVIRONMENT.md`](deploy/ENVIRONMENT.md), and [`deploy/`](deploy/). Production
 deployments should use token, forward-auth, or OIDC mode. Anonymous non-loopback
 binding fails closed unless `ALLOW_INSECURE_NO_AUTH=true` is explicitly set for
 a trusted private network.
@@ -148,14 +149,15 @@ CHRONICLE_IMAGE=chronicler:local ./tests/formal/run.sh
 
 It covers fail-closed configuration, manuscript and settings isolation, sync,
 collaboration, S3 outage/recovery, backup, restart durability, offline restore,
-and deep replica verification. The current candidate passed all 98 cases.
+and deep replica verification. The validated application release passed all 98
+cases.
 
-## Current release
+## Current validated application release
 
-- Source tag: `release-20260720-core-lean`
-- Source commit: `04c23501d6d8b50e99235ee159b0a4e36220de2e`
+- Image tag: `ghcr.io/vitadek/chronicler:255af2d`
+- Application commit: `255af2d35e362e2bfe34286d85a1ad9de2029f2d`
 - Accepted OCI digest:
-  `sha256:b40df22c4ccffc047bd0cdfe7622038801f4becf17ce68cb79b5e53fc1f3014a`
+  `sha256:dcde4edd74e82a22796ccc50e11d341768b651727cd06401cf77d9252cb16e93`
 - Canonical source: [GitHub](https://github.com/Vitadek/chronicler)
 
 The original Chronicle repositories remain archived as read-only history and
