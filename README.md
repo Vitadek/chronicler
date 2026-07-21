@@ -13,7 +13,7 @@ Chronicler.
 ## Demo
 
 <p align="center">
-  <video src="screenshots/demo.webm" controls width="90%" poster="screenshots/landing_page.webp"></video>
+  <video src="/protoman/chronicler/media/branch/main/screenshots/demo.webm" controls width="90%"></video>
 </p>
 
 A quick walkthrough: starting a manuscript, writing a chapter, titling the
