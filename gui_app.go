@@ -19,13 +19,14 @@ func runGUI(server *http.Server, addr string) {
 
 	switch runtime.GOOS {
 	case "linux":
-		if path, err := exec.LookPath("google-chrome"); err == nil {
+		// Prefer native GTK Epiphany (GNOME Web) app mode, then Chromium/Chrome/Brave standalone app mode
+		if path, err := exec.LookPath("epiphany"); err == nil {
 			cmd = exec.Command(path, fmt.Sprintf("--app=%s", targetURL))
-		} else if path, err := exec.LookPath("chromium-browser"); err == nil {
+		} else if path, err := exec.LookPath("google-chrome"); err == nil {
 			cmd = exec.Command(path, fmt.Sprintf("--app=%s", targetURL))
 		} else if path, err := exec.LookPath("chromium"); err == nil {
 			cmd = exec.Command(path, fmt.Sprintf("--app=%s", targetURL))
-		} else if path, err := exec.LookPath("epiphany"); err == nil {
+		} else if path, err := exec.LookPath("chromium-browser"); err == nil {
 			cmd = exec.Command(path, fmt.Sprintf("--app=%s", targetURL))
 		} else if path, err := exec.LookPath("brave-browser"); err == nil {
 			cmd = exec.Command(path, fmt.Sprintf("--app=%s", targetURL))
@@ -41,6 +42,6 @@ func runGUI(server *http.Server, addr string) {
 	}
 
 	if err := cmd.Start(); err != nil {
-		fmt.Printf("Failed to launch browser window: %v\n", err)
+		fmt.Printf("Failed to launch application window: %v\n", err)
 	}
 }
