@@ -20,6 +20,20 @@ COPY frontend/ ./
 RUN npm run build
 
 
+# --- Plugin toolkit stage -----------------------------------------------------
+# Installs the fixed set of packages a plugin may import with nothing declared
+# in its manifest (see plugin-toolkit/package.json). The server's embedded
+# esbuild resolves plugin imports against the node_modules this produces, which
+# the runtime stage bakes in at /app/node_modules -- so these packages are
+# "already shipped" and need no npm at plugin-install time. `npm ci` pins them
+# exactly, same rationale as the frontend stage.
+FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS plugin-toolkit
+
+WORKDIR /src/plugin-toolkit
+COPY plugin-toolkit/package.json plugin-toolkit/package-lock.json ./
+RUN npm ci --ignore-scripts --omit=dev --no-audit --no-fund
+
+
 # --- Go build stage -----------------------------------------------------------
 FROM golang:1.25-alpine@sha256:56961d79ea8129efddcc0b8643fd8a5416b4e6228cfd477e3fd61deb2672c587 AS builder
 
@@ -55,6 +69,15 @@ ENV DATA_DIR=/data \
     HOST=0.0.0.0
 
 COPY --from=builder /out/chronicle-server /app/chronicle-server
+
+# Plugin build toolkit. The server runs with WORKDIR /app, so its embedded
+# esbuild resolves plugin imports against /app/node_modules (BuildPlugin's
+# NodePaths) -- this is what lets a plugin `import` clsx/compromise/marked/etc.
+# with nothing declared in its manifest. Without it, every such import fails
+# with "Could not resolve", and it's why the image needs no Node/npm at
+# runtime: esbuild is linked into the Go binary; only the package *files* are
+# needed on disk. See plugin-toolkit/package.json.
+COPY --from=plugin-toolkit /src/plugin-toolkit/node_modules /app/node_modules
 
 # Bundled plugin sources. EMPTY in the official image — a base deployment ships
 # no plugins; they're installed from git in the UI. Kept as a hook for building

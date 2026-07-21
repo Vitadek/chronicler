@@ -74,6 +74,23 @@ func installDependencies(dir string, id string, dependencies map[string]string) 
 		}
 	}
 
+	// The official runtime image ships no npm (it's a static Go binary on
+	// Alpine; esbuild is linked into the binary, not invoked as a tool). When
+	// npm is unavailable we can't install arbitrary declared deps, but the
+	// image bakes a fixed toolkit into /app/node_modules (see the Dockerfile's
+	// plugin-toolkit stage) that BuildPlugin's NodePaths resolves against. So
+	// skip the install and let esbuild resolve: a declared dep that's in the
+	// toolkit (clsx, compromise, marked, …) just works, and one that isn't
+	// surfaces as a precise "Could not resolve <pkg>" esbuild error naming the
+	// exact module — far clearer than a blanket "npm not found". When npm IS
+	// present (a dev machine or a build-capable image), the full install path
+	// below runs unchanged.
+	if _, lookErr := exec.LookPath("npm"); lookErr != nil {
+		fmt.Printf("[plugins] npm not available; skipping dependency install for %s, relying on the bundled toolkit at /app/node_modules\n", id)
+		os.Remove(hashFile)
+		return nil
+	}
+
 	if err := os.MkdirAll(buildDir, 0755); err != nil {
 		return err
 	}

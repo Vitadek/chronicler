@@ -11,6 +11,11 @@ chronicle-server
 # Frontend dependencies. Node modules remain ignored.
 frontend/node_modules/
 
+# Plugin build toolkit dependencies -- installed in the Docker toolkit stage
+# (and locally only for verification); only package.json + package-lock.json
+# are tracked. See Dockerfile's plugin-toolkit stage.
+plugin-toolkit/node_modules/
+
 # Formal-suite run output (regenerated each run; may contain database snapshots).
 tests/formal/artifacts/*
 !tests/formal/artifacts/.gitkeep
