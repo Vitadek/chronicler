@@ -1,26 +1,74 @@
-name: chronicle-go
+name: chronicler
 
 services:
   chronicle:
-    image: forgejo.lan/protoman/chronicle-go:latest
+    image: ghcr.io/vitadek/chronicler:latest
     pull_policy: always
     restart: unless-stopped
     ports:
       - "${CHRONICLE_PORT:-3000}:3000"
     environment:
+      # --- Core server ---
       NODE_ENV: production
       HOST: 0.0.0.0
       PORT: 3000
       DATA_DIR: /data
-      AUTH_MODE: token
-      AUTH_TOKEN: ${CHRONICLE_TOKEN:?set CHRONICLE_TOKEN in .env}
+      LOCAL_ADMIN: ${LOCAL_ADMIN:-false}
+
+      # --- Auth. AUTH_MODE: none | token | forward | oidc. ---
+      # Unset vars for a mode you're not using are harmless -- the server
+      # only validates the ones its active AUTH_MODE requires. Full
+      # reference: ENVIRONMENT.md.
+      AUTH_MODE: ${AUTH_MODE:-token}
+      ALLOW_INSECURE_NO_AUTH: ${ALLOW_INSECURE_NO_AUTH:-false}
+
+      # AUTH_MODE=token
+      AUTH_TOKEN: ${CHRONICLE_TOKEN:-}
+
+      # AUTH_MODE=forward
+      AUTH_FORWARD_HEADER_USER: ${AUTH_FORWARD_HEADER_USER:-Remote-User}
+      AUTH_FORWARD_HEADER_EMAIL: ${AUTH_FORWARD_HEADER_EMAIL:-Remote-Email}
+      AUTH_FORWARD_HEADER_NAME: ${AUTH_FORWARD_HEADER_NAME:-Remote-Name}
+      AUTH_FORWARD_HEADER_GROUPS: ${AUTH_FORWARD_HEADER_GROUPS:-Remote-Groups}
+      AUTH_FORWARD_TRUSTED_PROXIES: ${AUTH_FORWARD_TRUSTED_PROXIES:-loopback,linklocal,uniquelocal}
+      AUTH_FORWARD_SECRET_HEADER: ${AUTH_FORWARD_SECRET_HEADER:-}
+      AUTH_FORWARD_SECRET: ${AUTH_FORWARD_SECRET:-}
+      AUTH_FORWARD_ADMIN_GROUP: ${AUTH_FORWARD_ADMIN_GROUP:-}
+
+      # AUTH_MODE=oidc
+      AUTH_OIDC_ISSUER_URL: ${AUTH_OIDC_ISSUER_URL:-}
+      AUTH_OIDC_CLIENT_ID: ${AUTH_OIDC_CLIENT_ID:-}
+      AUTH_OIDC_CLIENT_SECRET: ${AUTH_OIDC_CLIENT_SECRET:-}
+      AUTH_OIDC_REDIRECT_URI: ${AUTH_OIDC_REDIRECT_URI:-}
+      AUTH_OIDC_SCOPES: ${AUTH_OIDC_SCOPES:-openid profile email}
+      AUTH_OIDC_POST_LOGOUT_REDIRECT_URI: ${AUTH_OIDC_POST_LOGOUT_REDIRECT_URI:-}
+      AUTH_OIDC_TOKEN_AUTH_METHOD: ${AUTH_OIDC_TOKEN_AUTH_METHOD:-auto}
+
+      # --- Storage replica. STORAGE_REPLICA: none | nextcloud | s3. ---
+      # SQLite is always authoritative; a replica is an async DR copy.
       STORAGE_REPLICA: ${STORAGE_REPLICA:-none}
+      STORAGE_RETRY_INTERVAL_MS: ${STORAGE_RETRY_INTERVAL_MS:-30000}
+      STORAGE_MAX_ATTEMPTS: ${STORAGE_MAX_ATTEMPTS:-10}
+
+      # STORAGE_REPLICA=nextcloud
+      NEXTCLOUD_URL: ${NEXTCLOUD_URL:-}
+      NEXTCLOUD_ALLOW_INSECURE_HTTP: ${NEXTCLOUD_ALLOW_INSECURE_HTTP:-false}
+      NC_USER: ${NC_USER:-}
+      NC_PASS: ${NC_PASS:-}
+      NC_DIR: ${NC_DIR:-Chronicle_Storage}
+      NEXTCLOUD_CLIENT_ID: ${NEXTCLOUD_CLIENT_ID:-}
+      NEXTCLOUD_CLIENT_SECRET: ${NEXTCLOUD_CLIENT_SECRET:-}
+      NEXTCLOUD_REDIRECT_URI: ${NEXTCLOUD_REDIRECT_URI:-}
+
+      # STORAGE_REPLICA=s3
       S3_BUCKET: ${S3_BUCKET:-}
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_ENDPOINT: ${S3_ENDPOINT:-}
       S3_PREFIX: ${S3_PREFIX:-chronicle}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
       S3_ALLOW_INSECURE_HTTP: ${S3_ALLOW_INSECURE_HTTP:-false}
+      S3_SERVER_SIDE_ENCRYPTION: ${S3_SERVER_SIDE_ENCRYPTION:-}
+      S3_KMS_KEY_ID: ${S3_KMS_KEY_ID:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
     volumes:

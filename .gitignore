@@ -3,6 +3,11 @@ chronicle-server
 *.db-journal
 *.db-wal
 
+# Real env files anywhere in the repo (deploy/, or a future one) must never
+# be committed -- only the checked-in .env.example templates are tracked.
+.env
+**/.env
+
 # Frontend build tooling. web/ is NOT ignored — it is the embedded build
 # output that //go:embed requires at compile time.
 frontend/node_modules/
