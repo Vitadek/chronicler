@@ -188,7 +188,11 @@ func TestManuscriptArchiveRoundTripAndCollisionSafety(t *testing.T) {
 		if loadErr != nil || copyRecord == nil {
 			t.Fatalf("could not load imported copy: %v", loadErr)
 		}
-		if copyRecord.Chapters[0].Content != annotated || copyRecord.Metadata.Title != "Portable Novel (Imported copy)" {
+		expectedTitle := "Portable Novel (Imported copy)"
+		if pass == 1 {
+			expectedTitle = "Portable Novel (Imported copy 2)"
+		}
+		if copyRecord.Chapters[0].Content != annotated || copyRecord.Metadata.Title != expectedTitle {
 			t.Fatalf("imported manuscript changed: %#v", copyRecord)
 		}
 		importedCover := coverReference(copyRecord)
@@ -217,6 +221,128 @@ func TestManuscriptArchiveRejectsInvalidInput(t *testing.T) {
 	server.handler.ServeHTTP(res, req)
 	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "valid .chron") {
 		t.Fatalf("invalid import status = %d: %s", res.Code, res.Body.String())
+	}
+}
+
+func TestManuscriptArchiveReportsVersionMismatchBeforeWrites(t *testing.T) {
+	server := newArchiveTestServer(t)
+	manifest := manuscriptArchiveManifest{
+		Format: manuscriptArchiveFormat, Version: manuscriptArchiveVersion + 1,
+		Compression: "zip-deflate", ManuscriptCount: 0, Manuscripts: []manuscriptArchiveItem{},
+	}
+	manifestBody, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body bytes.Buffer
+	zw := zip.NewWriter(&body)
+	entry, err := zw.Create("manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = entry.Write(manifestBody); err != nil {
+		t.Fatal(err)
+	}
+	if err = zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/manuscripts/archive/import", bytes.NewReader(body.Bytes()))
+	res := httptest.NewRecorder()
+	server.handler.ServeHTTP(res, req)
+	if res.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("version mismatch status = %d: %s", res.Code, res.Body.String())
+	}
+	var response manuscriptArchiveErrorResponse
+	if err = json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != "unsupported_version" || response.Stage != "manifest" || !response.RolledBack || response.Imported != 0 {
+		t.Fatalf("incomplete version error: %#v", response)
+	}
+	if !strings.Contains(response.Detail, "accepts") || len(response.Log) < 3 {
+		t.Fatalf("version error lacks actionable detail: %#v", response)
+	}
+	var count int
+	if err = server.database.QueryRow("SELECT COUNT(*) FROM manuscripts").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("version mismatch changed database: count=%d err=%v", count, err)
+	}
+}
+
+func TestManuscriptArchiveAtomicRollbackAfterPartialWork(t *testing.T) {
+	source := newArchiveTestServer(t)
+	cover := tinyPNG()
+	saveArchiveTestManuscript(t, source.database, "first", "First", "<p>one</p>", "first.cover.png")
+	saveArchiveTestManuscript(t, source.database, "fail-me", "Second", "<p>two</p>", "")
+	if _, err := source.database.Exec("UPDATE manuscripts SET last_modified = ? WHERE id = 'first'", time.Now().Add(time.Minute).UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := source.database.Exec(`
+		INSERT INTO storage_blobs (key, content, content_type, generation, checksum, updated_at)
+		VALUES (?, ?, ?, 1, ?, ?)
+	`, "covers/local/first.cover.png", cover, "image/png", replica.Sha256(cover), time.Now().UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	var archive bytes.Buffer
+	if err := NewManuscriptArchiveHandler(source.cfg, source.database).writeArchive(&archive, db.LocalUserID); err != nil {
+		t.Fatal(err)
+	}
+
+	server := newArchiveTestServer(t)
+	// This aborts after the first manuscript, its chapter, cover, change-log
+	// rows, and replica jobs have all been staged in the same transaction.
+	if _, err := server.database.Exec(`
+		CREATE TRIGGER reject_second_archive_manuscript
+		BEFORE INSERT ON manuscripts WHEN NEW.id = 'fail-me'
+		BEGIN SELECT RAISE(ABORT, 'injected archive import failure'); END
+	`); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/manuscripts/archive/import", bytes.NewReader(archive.Bytes()))
+	res := httptest.NewRecorder()
+	server.handler.ServeHTTP(res, req)
+	if res.Code != http.StatusInternalServerError {
+		t.Fatalf("atomic failure status = %d: %s", res.Code, res.Body.String())
+	}
+	var response manuscriptArchiveErrorResponse
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != "atomic_import_failed" || response.Stage != "database" || !response.RolledBack || response.Imported != 0 || !response.Retryable {
+		t.Fatalf("incomplete atomic error response: %#v", response)
+	}
+	if !strings.Contains(response.Detail, "injected archive import failure") || len(response.Log) < 3 {
+		t.Fatalf("atomic error lacks visible detail: %#v", response)
+	}
+
+	for _, table := range []string{"manuscripts", "chapters", "storage_blobs", "change_log", "storage_replication_outbox", "storage_replica_generations"} {
+		var count int
+		if err := server.database.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&count); err != nil {
+			t.Fatalf("count %s: %v", table, err)
+		}
+		if count != 0 {
+			t.Fatalf("atomic rollback left %d row(s) in %s", count, table)
+		}
+	}
+}
+
+func TestManuscriptArchiveIDCollisionDoesNotRenameUniqueTitle(t *testing.T) {
+	server := newArchiveTestServer(t)
+	saveArchiveTestManuscript(t, server.database, "same-id", "Existing title", "<p>existing</p>", "")
+	handler := NewManuscriptArchiveHandler(server.cfg, server.database)
+	archived := []archivedManuscript{{
+		item: manuscriptArchiveItem{ID: "same-id", Title: "Different imported title"}, sourceID: "same-id",
+		record: &db.ManuscriptRecord{Metadata: db.ManuscriptMetadata{ID: "same-id", Title: "Different imported title"}},
+	}}
+	result, err := handler.importArchive(db.LocalUserID, archived)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IDsReassigned != 1 || result.Renamed != 0 || !result.Manuscripts[0].IDReassigned || result.Manuscripts[0].TitleRenamed {
+		t.Fatalf("unexpected collision result: %#v", result)
+	}
+	if result.Manuscripts[0].Title != "Different imported title" {
+		t.Fatalf("unique visible title was changed: %q", result.Manuscripts[0].Title)
 	}
 }
 

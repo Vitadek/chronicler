@@ -27,11 +27,22 @@ test library must produce a `.chron` smaller than 5 MiB. Real size depends on th
 text and especially on cover art; multi-million-word archives are supported up to
 the documented import safety limits.
 
-Imports are additive and account-scoped. IDs are preserved when available. If an
-ID already exists, Chronicler generates a new ID and labels the title as an
-imported copy. It never silently overwrites the existing manuscript. Compressed
-input is limited to 256 MiB, expanded input to 2 GiB, and each manuscript payload
-to 512 MiB to reject ZIP bombs while leaving ample room for very large libraries.
+Imports are additive, account-scoped, and atomic. Chronicler validates the entire
+container before writing, then stores every manuscript, chapter, cover, change-log
+entry, storage generation, and replica outbox job in one SQLite transaction. Any
+failure—including the final commit—rolls back the complete import. The API reports
+the failed stage, detail, rollback status, retryability, and a user-visible activity
+log; a failed response always reports zero imported records.
+
+IDs are preserved when available. If an internal ID already exists, Chronicler
+generates a new ID without changing a unique visible title. The `(Imported copy)`
+title suffix is used only when that title would otherwise duplicate an existing
+title (subsequent duplicates are numbered). Existing manuscripts are never
+overwritten. Compressed input is limited to 256 MiB, expanded input to 2 GiB, and
+each manuscript payload to 512 MiB to reject ZIP bombs while leaving ample room
+for very large libraries. Unsafe or duplicate paths, invalid manifests, unknown
+format versions/codecs, missing payloads, duplicate chapter IDs, unsupported
+covers, truncated ZIP data, and inconsistent counts are rejected before writes.
 
 ## Future compression-codec plugin
 

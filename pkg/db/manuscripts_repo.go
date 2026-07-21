@@ -297,6 +297,78 @@ func metadataForStorage(metadata ManuscriptMetadata) map[string]interface{} {
 	return clean
 }
 
+// InsertImportedManuscript adds one previously validated archive record to an
+// existing transaction. The caller owns commit/rollback so an entire library,
+// including covers and replica outbox work, can be imported atomically.
+func InsertImportedManuscript(tx *sql.Tx, userId string, manuscript *ManuscriptRecord, now int64) error {
+	manuscriptId := manuscript.Metadata.ID
+	storedMetadata := metadataForStorage(manuscript.Metadata)
+	storedDataBytes, err := json.Marshal(storedMetadata)
+	if err != nil {
+		return fmt.Errorf("serialize manuscript metadata: %w", err)
+	}
+	storedDataStr := string(storedDataBytes)
+
+	if _, err = tx.Exec(`
+		INSERT INTO manuscripts (user_id, id, data, last_modified, deleted_at, revision)
+		VALUES (?, ?, ?, ?, NULL, 1)
+	`, userId, manuscriptId, storedDataStr, now); err != nil {
+		return fmt.Errorf("insert manuscript %q: %w", manuscriptId, err)
+	}
+	if _, err = RecordChange(tx, userId, "manuscript", nil, manuscriptId, "upsert", 1, now); err != nil {
+		return fmt.Errorf("record manuscript %q change: %w", manuscriptId, err)
+	}
+	replData, err := replica.SerializeManuscript(userId, manuscriptId, now, 1, storedDataStr)
+	if err != nil {
+		return fmt.Errorf("serialize manuscript %q replica: %w", manuscriptId, err)
+	}
+	if err = replica.EnqueueReplicaPut(tx, fmt.Sprintf("manuscripts/%s/%s/manuscript.json", userId, manuscriptId), replData, "application/json"); err != nil {
+		return fmt.Errorf("enqueue manuscript %q replica: %w", manuscriptId, err)
+	}
+
+	for position, chapter := range manuscript.Chapters {
+		if _, err = tx.Exec(`
+			INSERT INTO chapters (user_id, manuscript_id, id, title, content, position, last_modified, deleted_at, revision)
+			VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 1)
+		`, userId, manuscriptId, chapter.ID, chapter.Title, chapter.Content, position, now); err != nil {
+			return fmt.Errorf("insert chapter %q in manuscript %q: %w", chapter.ID, manuscriptId, err)
+		}
+		if _, err = RecordChange(tx, userId, "chapter", &manuscriptId, chapter.ID, "upsert", 1, now); err != nil {
+			return fmt.Errorf("record chapter %q change in manuscript %q: %w", chapter.ID, manuscriptId, err)
+		}
+		chapterReplica := replica.SerializeChapter(userId, manuscriptId, chapter.ID, chapter.Title, position, now, 1, chapter.Content)
+		if err = replica.EnqueueReplicaPut(tx, fmt.Sprintf("manuscripts/%s/%s/chapters/%s.html", userId, manuscriptId, chapter.ID), chapterReplica, "text/html; charset=utf-8"); err != nil {
+			return fmt.Errorf("enqueue chapter %q replica in manuscript %q: %w", chapter.ID, manuscriptId, err)
+		}
+	}
+
+	if len(manuscript.Chapters) > 0 {
+		storedMetadata["lastModified"] = now
+		finalDataBytes, marshalErr := json.Marshal(storedMetadata)
+		if marshalErr != nil {
+			return fmt.Errorf("serialize final manuscript %q metadata: %w", manuscriptId, marshalErr)
+		}
+		finalData := string(finalDataBytes)
+		if _, err = tx.Exec(`
+			UPDATE manuscripts SET data = ?, last_modified = ?, revision = 2
+			WHERE user_id = ? AND id = ? AND deleted_at IS NULL
+		`, finalData, now, userId, manuscriptId); err != nil {
+			return fmt.Errorf("finalize manuscript %q revision: %w", manuscriptId, err)
+		}
+		if _, err = RecordChange(tx, userId, "manuscript", nil, manuscriptId, "upsert", 2, now); err != nil {
+			return fmt.Errorf("record final manuscript %q change: %w", manuscriptId, err)
+		}
+		finalReplica, serializeErr := replica.SerializeManuscript(userId, manuscriptId, now, 2, finalData)
+		if serializeErr != nil {
+			return fmt.Errorf("serialize final manuscript %q replica: %w", manuscriptId, serializeErr)
+		}
+		if err = replica.EnqueueReplicaPut(tx, fmt.Sprintf("manuscripts/%s/%s/manuscript.json", userId, manuscriptId), finalReplica, "application/json"); err != nil {
+			return fmt.Errorf("enqueue final manuscript %q replica: %w", manuscriptId, err)
+		}
+	}
+	return nil
+}
+
 func SaveLegacyManuscript(database *sql.DB, userId string, manuscript *ManuscriptRecord, createOnly bool) (*SaveResult, error) {
 	manuscriptId := manuscript.Metadata.ID
 	var conflicts []RecordConflict
@@ -359,7 +431,7 @@ func SaveLegacyManuscript(database *sql.DB, userId string, manuscript *Manuscrip
 		var currDecoded map[string]interface{}
 		_ = json.Unmarshal([]byte(rawData), &currDecoded)
 		currDecodedBytes, _ := json.Marshal(currDecoded)
-		
+
 		identical := string(currDecodedBytes) == storedDataStr
 		expected := manuscript.Metadata.Revision
 		revisionMatches := expected == 0 || expected == revision

@@ -82,10 +82,17 @@ assert.match(globalSettings, />Chronicler Global Config</);
 for (const archiveControl of ['Manuscript Archive', 'Export .chron', 'Import .chron']) {
   assert.ok(globalSettings.includes(archiveControl), `${archiveControl} remains available in Global Config`);
 }
-assert.match(globalSettings, /never replaces the database or overwrites an existing manuscript/);
+assert.match(globalSettings, /CircleHelp/);
+assert.match(globalSettings, /Most libraries\s*are ready in under a second/);
+assert.match(globalSettings, /role="log"/);
+assert.match(globalSettings, /one atomic transaction/);
+assert.doesNotMatch(globalSettings, /balanced ZIP Deflate|360,000 words/);
+assert.doesNotMatch(globalSettings, /bg-manuscript-dark text-white\/40|bg-manuscript-light text-black\/40/);
+assert.doesNotMatch(sidebar, /bg-manuscript-dark border-white\/15 text-white\/40|bg-manuscript-light border-black\/12 text-black\/40/);
 const archiveService = readFileSync(resolve(root, 'src/services/manuscriptArchiveService.ts'), 'utf8');
 assert.match(archiveService, /\/api\/manuscripts\/archive\/export/);
 assert.match(archiveService, /\/api\/manuscripts\/archive\/import/);
+assert.match(archiveService, /Rollback confirmed/);
 const manifest = JSON.parse(readFileSync(resolve(root, 'public/manifest.webmanifest'), 'utf8'));
 assert.equal(manifest.name, 'Chronicler');
 assert.equal(manifest.short_name, 'Chronicler');

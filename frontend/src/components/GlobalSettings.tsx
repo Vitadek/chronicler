@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, User, Settings, Moon, Sun, Shield, FileArchive, Upload, Loader2, Download, Check, CircleAlert } from 'lucide-react';
+import { ArrowLeft, User, Settings, Moon, Sun, Shield, FileArchive, Upload, Loader2, Download, Check, CircleAlert, CircleHelp } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { UserProfile, ExportSettings, HtmlExportTheme, EpubCoverSource } from '../types';
 import { PluginsPanel } from './PluginsPanel';
@@ -30,15 +30,20 @@ export function GlobalSettings({
   const archiveInputRef = useRef<HTMLInputElement>(null);
   const [archiveBusy, setArchiveBusy] = useState<'export' | 'import' | null>(null);
   const [archiveNotice, setArchiveNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
+  const [archiveLog, setArchiveLog] = useState<string[]>([]);
 
   const exportManuscriptArchive = async () => {
     setArchiveBusy('export');
     setArchiveNotice(null);
+    setArchiveLog(['Preparing all manuscripts and covers…', 'Compressing the library with ZIP Deflate…']);
     try {
       await manuscriptArchiveService.exportLibrary();
       setArchiveNotice({ kind: 'success', message: 'Your portable .chron manuscript archive was downloaded.' });
+      setArchiveLog((entries) => [...entries, 'Download created successfully.']);
     } catch (error) {
-      setArchiveNotice({ kind: 'error', message: error instanceof Error ? error.message : 'The export failed.' });
+      const message = error instanceof Error ? error.message : 'The export failed.';
+      setArchiveNotice({ kind: 'error', message });
+      setArchiveLog((entries) => [...entries, `Export stopped: ${message}`]);
     } finally {
       setArchiveBusy(null);
     }
@@ -47,17 +52,29 @@ export function GlobalSettings({
   const importManuscriptArchive = async (file: File) => {
     setArchiveBusy('import');
     setArchiveNotice(null);
+    setArchiveLog([
+      `Selected ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB).`,
+      'Uploading and validating the archive format, version, file paths, payloads, chapters, and covers…',
+      'If validation succeeds, all records and replication jobs will be written in one atomic transaction…',
+    ]);
     try {
       const result = await manuscriptArchiveService.importLibrary(file);
-      const copyNote = result.renamed > 0
-        ? ` ${result.renamed} conflicted with existing IDs and were imported as clearly named copies.`
+      setArchiveLog(result.log);
+      const titleNote = result.renamed > 0
+        ? ` ${result.renamed} title${result.renamed === 1 ? '' : 's'} matched existing work and received an Imported copy suffix.`
+        : '';
+      const idNote = result.idsReassigned > 0
+        ? ` ${result.idsReassigned} internal ID${result.idsReassigned === 1 ? ' was' : 's were'} reassigned without changing the visible title.`
         : '';
       setArchiveNotice({
         kind: 'success',
-        message: `Imported ${result.imported} manuscript${result.imported === 1 ? '' : 's'} and ${result.covers} cover${result.covers === 1 ? '' : 's'}.${copyNote}`,
+        message: `Atomic import committed: ${result.imported} manuscript${result.imported === 1 ? '' : 's'} and ${result.covers} cover${result.covers === 1 ? '' : 's'}.${titleNote}${idNote}`,
       });
     } catch (error) {
-      setArchiveNotice({ kind: 'error', message: error instanceof Error ? error.message : 'The import failed.' });
+      const message = error instanceof Error ? error.message : 'The import failed.';
+      const lines = message.split('\n').filter(Boolean);
+      setArchiveNotice({ kind: 'error', message: lines.shift() || 'The import failed.' });
+      setArchiveLog((entries) => [...entries, ...lines]);
     } finally {
       setArchiveBusy(null);
       if (archiveInputRef.current) archiveInputRef.current.value = '';
@@ -84,7 +101,10 @@ export function GlobalSettings({
       transition={{ duration: 0.25 }}
       className={cn(
         'min-h-screen-dvh w-full overflow-y-auto',
-        isDarkMode ? 'bg-manuscript-dark text-white/40' : 'bg-manuscript-light text-black/40',
+        // Children use opacity utilities for hierarchy. Keeping the parent
+        // opaque avoids multiplying 40% text by another 30–50% and producing
+        // nearly invisible labels in both themes.
+        isDarkMode ? 'bg-manuscript-dark text-[#F1EDE4]' : 'bg-manuscript-light text-[#1F1E1C]',
       )}
     >
       <div className="max-w-3xl mx-auto px-6 sm:px-10 py-10 sm:py-16">
@@ -125,17 +145,30 @@ export function GlobalSettings({
               <span>Manuscript Archive</span>
             </div>
             <div className="rounded-2xl border border-black/12 dark:border-white/15 p-5 space-y-5">
-              <div className="space-y-2">
-                <h4 className={cn('text-xs font-bold', isDarkMode ? 'text-white' : 'text-black')}>Portable .chron library</h4>
-                <p className="text-[10px] leading-relaxed opacity-50">
-                  Export every manuscript and its cover art as a versioned file hierarchy compressed with balanced ZIP Deflate.
-                  Prose libraries around 360,000 words are normally well under 5 MB before cover images; multi-million-word
-                  libraries remain supported.
-                </p>
-                <p className="text-[10px] leading-relaxed opacity-40 italic">
-                  Import adds manuscripts to this account. It never replaces the database or overwrites an existing manuscript;
-                  ID conflicts become clearly named imported copies.
-                </p>
+              <div className="flex items-center justify-between gap-3">
+                <h4 className={cn('text-xs font-bold', isDarkMode ? 'text-white' : 'text-black')}>All manuscripts + covers</h4>
+                <details className="relative group">
+                  <summary
+                    aria-label="About .chron manuscript archives"
+                    title="About .chron archives"
+                    className="list-none [&::-webkit-details-marker]:hidden cursor-pointer rounded-full p-1 opacity-70 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 transition-opacity"
+                  >
+                    <CircleHelp className="w-4 h-4" />
+                  </summary>
+                  <div
+                    role="note"
+                    className={cn(
+                      'absolute right-0 z-20 mt-2 w-72 max-w-[calc(100vw-4rem)] rounded-xl border p-3 text-[11px] leading-relaxed shadow-xl',
+                      isDarkMode
+                        ? 'border-white/20 bg-[#302f2c] text-[#F1EDE4]'
+                        : 'border-black/15 bg-white text-[#1F1E1C]',
+                    )}
+                  >
+                    <strong>Export .chron</strong> downloads every manuscript and cover in one compressed file. Most libraries
+                    are ready in under a second; multi-million-word libraries or many covers may take several seconds.
+                    <strong className="ml-1">Import .chron</strong> adds its contents atomically without overwriting existing work.
+                  </div>
+                </details>
               </div>
               <input
                 ref={archiveInputRef}
@@ -184,6 +217,21 @@ export function GlobalSettings({
                     ? <CircleAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                     : <Check className="w-3.5 h-3.5 shrink-0 mt-0.5" />}
                   <span>{archiveNotice.message}</span>
+                </div>
+              )}
+              {archiveLog.length > 0 && (
+                <div
+                  role="log"
+                  aria-live="polite"
+                  className={cn(
+                    'rounded-xl border px-3 py-2.5 text-[10px] leading-relaxed',
+                    isDarkMode ? 'border-white/15 bg-black/15 text-[#E6E1D8]' : 'border-black/12 bg-black/[0.025] text-[#292724]',
+                  )}
+                >
+                  <div className="mb-1.5 font-bold uppercase tracking-widest">Activity</div>
+                  <ol className="space-y-1 list-decimal pl-4">
+                    {archiveLog.map((entry, index) => <li key={`${index}-${entry}`}>{entry}</li>)}
+                  </ol>
                 </div>
               )}
             </div>

@@ -5,19 +5,39 @@ export interface ManuscriptArchiveImportItem {
   id: string;
   title: string;
   copied: boolean;
+  idReassigned: boolean;
+  titleRenamed: boolean;
 }
 
 export interface ManuscriptArchiveImportResult {
   imported: number;
   renamed: number;
+  idsReassigned: number;
   covers: number;
+  atomic: boolean;
+  formatVersion: number;
+  compression: string;
+  log: string[];
   manuscripts: ManuscriptArchiveImportItem[];
 }
 
 async function archiveError(res: Response, fallback: string): Promise<Error> {
   try {
-    const body = await res.json() as { error?: unknown };
-    if (typeof body.error === 'string' && body.error.trim()) return new Error(body.error);
+    const body = await res.json() as {
+      error?: unknown; code?: unknown; stage?: unknown; detail?: unknown;
+      rolledBack?: unknown; imported?: unknown; retryable?: unknown; log?: unknown;
+    };
+    if (typeof body.error === 'string' && body.error.trim()) {
+      const lines = [body.error];
+      if (typeof body.detail === 'string' && body.detail.trim()) lines.push(`Detail: ${body.detail}`);
+      if (typeof body.stage === 'string') lines.push(`Failed at stage: ${body.stage}.`);
+      if (body.rolledBack === true) lines.push('Rollback confirmed: no part of this import was retained.');
+      if (Array.isArray(body.log)) {
+        lines.push(...body.log.filter((entry): entry is string => typeof entry === 'string'));
+      }
+      if (body.retryable === true) lines.push('You can retry safely; existing manuscripts were not changed.');
+      return new Error(lines.join('\n'));
+    }
   } catch {
     // A proxy's plain-text/HTML error should not replace the useful fallback.
   }
@@ -48,7 +68,7 @@ export const manuscriptArchiveService = {
     });
     if (!res.ok) throw await archiveError(res, 'Failed to import the manuscript archive');
     const result = await res.json() as ManuscriptArchiveImportResult;
-    if (!Number.isInteger(result.imported) || !Array.isArray(result.manuscripts)) {
+    if (!Number.isInteger(result.imported) || !Array.isArray(result.manuscripts) || result.atomic !== true || !Array.isArray(result.log)) {
       throw new Error('The server returned an invalid import result');
     }
     return result;

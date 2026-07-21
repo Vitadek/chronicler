@@ -428,8 +428,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className={cn(
               "app-sidebar fixed inset-y-0 left-0 z-50 flex flex-col pt-20 sm:pt-24 pb-8 px-4 sm:px-6 border-r overflow-hidden w-[88vw] max-w-80",
               isDarkMode 
-                ? "bg-manuscript-dark border-white/15 text-white/40" 
-                : "bg-manuscript-light border-black/12 text-black/40",
+                ? "bg-manuscript-dark border-white/15 text-[#F1EDE4]"
+                : "bg-manuscript-light border-black/12 text-[#1F1E1C]",
               className
             )}
           >

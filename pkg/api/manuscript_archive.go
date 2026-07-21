@@ -52,29 +52,44 @@ type manuscriptArchiveItem struct {
 }
 
 type archivedManuscript struct {
-	item       manuscriptArchiveItem
-	record     *db.ManuscriptRecord
-	cover      []byte
-	coverMime  string
-	coverExt   string
-	sourceID   string
-	destID     string
-	destTitle  string
-	wasRenamed bool
+	item      manuscriptArchiveItem
+	record    *db.ManuscriptRecord
+	cover     []byte
+	coverMime string
+	coverExt  string
+	sourceID  string
 }
 
 type manuscriptArchiveImportItem struct {
-	SourceID string `json:"sourceId"`
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Copied   bool   `json:"copied"`
+	SourceID     string `json:"sourceId"`
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	Copied       bool   `json:"copied"`
+	IDReassigned bool   `json:"idReassigned"`
+	TitleRenamed bool   `json:"titleRenamed"`
 }
 
 type manuscriptArchiveImportResult struct {
-	Imported    int                           `json:"imported"`
-	Renamed     int                           `json:"renamed"`
-	Covers      int                           `json:"covers"`
-	Manuscripts []manuscriptArchiveImportItem `json:"manuscripts"`
+	Imported      int                           `json:"imported"`
+	Renamed       int                           `json:"renamed"`
+	IDsReassigned int                           `json:"idsReassigned"`
+	Covers        int                           `json:"covers"`
+	Atomic        bool                          `json:"atomic"`
+	FormatVersion int                           `json:"formatVersion"`
+	Compression   string                        `json:"compression"`
+	Log           []string                      `json:"log"`
+	Manuscripts   []manuscriptArchiveImportItem `json:"manuscripts"`
+}
+
+type manuscriptArchiveErrorResponse struct {
+	Error      string   `json:"error"`
+	Code       string   `json:"code"`
+	Stage      string   `json:"stage"`
+	Detail     string   `json:"detail,omitempty"`
+	RolledBack bool     `json:"rolledBack"`
+	Imported   int      `json:"imported"`
+	Retryable  bool     `json:"retryable"`
+	Log        []string `json:"log"`
 }
 
 type ManuscriptArchiveHandler struct {
@@ -90,6 +105,12 @@ func archiveError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+func archiveImportError(w http.ResponseWriter, status int, response manuscriptArchiveErrorResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 func archiveFilename() string {
@@ -303,7 +324,7 @@ func decodeArchive(tempPath string) ([]archivedManuscript, error) {
 		return nil, errors.New("the archive manifest is invalid")
 	}
 	if manifest.Format != manuscriptArchiveFormat || manifest.Version != manuscriptArchiveVersion {
-		return nil, fmt.Errorf("unsupported .chron format or version (%q v%d)", manifest.Format, manifest.Version)
+		return nil, fmt.Errorf("unsupported .chron format or version: archive is %q v%d; this Chronicler release accepts %q v%d only", manifest.Format, manifest.Version, manuscriptArchiveFormat, manuscriptArchiveVersion)
 	}
 	if manifest.Compression != "zip-deflate" {
 		return nil, fmt.Errorf("unsupported .chron compression %q", manifest.Compression)
@@ -332,6 +353,16 @@ func decodeArchive(tempPath string) ([]archivedManuscript, error) {
 		var record db.ManuscriptRecord
 		if err = json.Unmarshal(body, &record); err != nil || record.Metadata.ID == "" || record.Metadata.ID != item.ID {
 			return nil, fmt.Errorf("%s is not a valid manuscript", item.Path)
+		}
+		seenChapterIDs := make(map[string]bool, len(record.Chapters))
+		for chapterIndex, chapter := range record.Chapters {
+			if strings.TrimSpace(chapter.ID) == "" {
+				return nil, fmt.Errorf("%s has an empty chapter id at position %d", item.Path, chapterIndex+1)
+			}
+			if seenChapterIDs[chapter.ID] {
+				return nil, fmt.Errorf("%s contains duplicate chapter id %q", item.Path, chapter.ID)
+			}
+			seenChapterIDs[chapter.ID] = true
 		}
 		payload := archivedManuscript{item: item, record: &record, sourceID: item.ID}
 		if item.CoverPath != "" {
@@ -367,7 +398,7 @@ func randomArchiveToken(bytes int) (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
-func manuscriptExists(database *sql.DB, userID string, id string) (bool, error) {
+func manuscriptExists(database replica.Queryable, userID string, id string) (bool, error) {
 	var one int
 	err := database.QueryRow("SELECT 1 FROM manuscripts WHERE user_id = ? AND id = ?", userID, id).Scan(&one)
 	if err == sql.ErrNoRows {
@@ -376,7 +407,7 @@ func manuscriptExists(database *sql.DB, userID string, id string) (bool, error) 
 	return err == nil, err
 }
 
-func allocateImportedManuscriptID(database *sql.DB, userID, preferred string, reserved map[string]bool) (string, bool, error) {
+func allocateImportedManuscriptID(database replica.Queryable, userID, preferred string, reserved map[string]bool) (string, bool, error) {
 	if portableManuscriptID.MatchString(preferred) && !reserved[preferred] {
 		exists, err := manuscriptExists(database, userID, preferred)
 		if err != nil {
@@ -415,12 +446,51 @@ func importedCopyTitle(title string) string {
 	return title + " (Imported copy)"
 }
 
-func storeImportedCover(database *sql.DB, userID, filename, mime string, content []byte) error {
-	tx, err := database.Begin()
+func existingImportTitles(tx *sql.Tx, userID string) (map[string]int, error) {
+	rows, err := tx.Query("SELECT data FROM manuscripts WHERE user_id = ? AND deleted_at IS NULL", userID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer tx.Rollback()
+	defer rows.Close()
+	titles := make(map[string]int)
+	for rows.Next() {
+		var raw string
+		if err = rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		var metadata db.ManuscriptMetadata
+		if err = json.Unmarshal([]byte(raw), &metadata); err != nil {
+			return nil, fmt.Errorf("existing manuscript metadata is invalid: %w", err)
+		}
+		titles[strings.ToLower(strings.TrimSpace(metadata.Title))]++
+	}
+	return titles, rows.Err()
+}
+
+func allocateImportedTitle(title string, used map[string]int) (string, bool) {
+	base := strings.TrimSpace(title)
+	if base == "" {
+		base = "Imported manuscript"
+	}
+	key := strings.ToLower(base)
+	if used[key] == 0 {
+		used[key] = 1
+		return base, false
+	}
+	for copyNumber := 1; ; copyNumber++ {
+		candidate := importedCopyTitle(base)
+		if copyNumber > 1 {
+			candidate = fmt.Sprintf("%s (Imported copy %d)", base, copyNumber)
+		}
+		candidateKey := strings.ToLower(candidate)
+		if used[candidateKey] == 0 {
+			used[candidateKey] = 1
+			return candidate, true
+		}
+	}
+}
+
+func storeImportedCover(tx *sql.Tx, userID, filename, mime string, content []byte) error {
 	key := fmt.Sprintf("covers/%s/%s", userID, filename)
 	generation, err := replica.NextStorageGeneration(tx, key)
 	if err != nil {
@@ -437,26 +507,39 @@ func storeImportedCover(database *sql.DB, userID, filename, mime string, content
 	if err = replica.EnqueueAtGeneration(tx, replica.PortableReplicaKey(key), "put", generation, content, mime, checksum); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (h *ManuscriptArchiveHandler) importArchive(userID string, archived []archivedManuscript) (*manuscriptArchiveImportResult, error) {
-	result := &manuscriptArchiveImportResult{Manuscripts: make([]manuscriptArchiveImportItem, 0, len(archived))}
+	result := &manuscriptArchiveImportResult{
+		Atomic: true, FormatVersion: manuscriptArchiveVersion, Compression: "zip-deflate",
+		Log: []string{
+			fmt.Sprintf("Validated .chron format v%d and %d manuscript payload(s).", manuscriptArchiveVersion, len(archived)),
+			"Opened one atomic SQLite transaction for manuscripts, chapters, covers, change history, and replica jobs.",
+		},
+		Manuscripts: make([]manuscriptArchiveImportItem, 0, len(archived)),
+	}
+	tx, err := h.database.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("open atomic database transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	usedTitles, err := existingImportTitles(tx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("inspect destination manuscript titles: %w", err)
+	}
 	reserved := make(map[string]bool, len(archived))
 	for index := range archived {
 		payload := &archived[index]
-		destID, copied, err := allocateImportedManuscriptID(h.database, userID, payload.sourceID, reserved)
+		destID, idReassigned, err := allocateImportedManuscriptID(tx, userID, payload.sourceID, reserved)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("allocate destination id for archive manuscript %d (%q): %w", index+1, payload.sourceID, err)
 		}
-		payload.destID = destID
-		payload.wasRenamed = copied
 		payload.record.Metadata.ID = destID
 		payload.record.Metadata.Revision = 0
-		if copied {
-			payload.record.Metadata.Title = importedCopyTitle(payload.record.Metadata.Title)
-		}
-		payload.destTitle = payload.record.Metadata.Title
+		var titleRenamed bool
+		payload.record.Metadata.Title, titleRenamed = allocateImportedTitle(payload.record.Metadata.Title, usedTitles)
 		for chapterIndex := range payload.record.Chapters {
 			payload.record.Chapters[chapterIndex].Revision = 0
 		}
@@ -468,36 +551,44 @@ func (h *ManuscriptArchiveHandler) importArchive(userID string, archived []archi
 		if len(payload.cover) > 0 {
 			token, tokenErr := randomArchiveToken(6)
 			if tokenErr != nil {
-				return nil, tokenErr
+				return nil, fmt.Errorf("allocate cover filename for manuscript %q: %w", destID, tokenErr)
 			}
 			coverFilename = fmt.Sprintf("%s.%s.%s", destID, token, payload.coverExt)
 			payload.record.Metadata.ExtraFields["coverArt"] = coverFilename
 		}
 
-		saved, saveErr := db.SaveLegacyManuscript(h.database, userID, payload.record, true)
-		if saveErr != nil {
-			return nil, saveErr
-		}
-		if len(saved.Conflicts) > 0 {
-			return nil, errors.New("a manuscript was created concurrently; import can be retried safely")
+		if saveErr := db.InsertImportedManuscript(tx, userID, payload.record, time.Now().UnixMilli()); saveErr != nil {
+			return nil, fmt.Errorf("store archive manuscript %d of %d (%q): %w", index+1, len(archived), payload.sourceID, saveErr)
 		}
 		if coverFilename != "" {
-			if err = storeImportedCover(h.database, userID, coverFilename, payload.coverMime, payload.cover); err != nil {
-				return nil, fmt.Errorf("manuscript imported but its cover could not be stored: %w", err)
+			if err = storeImportedCover(tx, userID, coverFilename, payload.coverMime, payload.cover); err != nil {
+				return nil, fmt.Errorf("store cover for archive manuscript %d of %d (%q): %w", index+1, len(archived), payload.sourceID, err)
 			}
 			result.Covers++
 		}
 		result.Imported++
-		if copied {
+		if idReassigned {
+			result.IDsReassigned++
+		}
+		if titleRenamed {
 			result.Renamed++
 		}
+		result.Log = append(result.Log, fmt.Sprintf(
+			"Prepared manuscript %d/%d: %q (destination id %q, %d chapter(s), cover: %t, id reassigned: %t, title renamed: %t).",
+			index+1, len(archived), payload.record.Metadata.Title, destID, len(payload.record.Chapters), coverFilename != "", idReassigned, titleRenamed,
+		))
 		result.Manuscripts = append(result.Manuscripts, manuscriptArchiveImportItem{
-			SourceID: payload.sourceID,
-			ID:       destID,
-			Title:    payload.destTitle,
-			Copied:   copied,
+			SourceID: payload.sourceID, ID: destID, Title: payload.record.Metadata.Title,
+			Copied: idReassigned || titleRenamed, IDReassigned: idReassigned, TitleRenamed: titleRenamed,
 		})
 	}
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit atomic database transaction: %w", err)
+	}
+	result.Log = append(result.Log, fmt.Sprintf(
+		"Committed successfully: %d manuscript(s), %d cover(s), %d reassigned id(s), and %d renamed title(s). No existing manuscript was overwritten.",
+		result.Imported, result.Covers, result.IDsReassigned, result.Renamed,
+	))
 	return result, nil
 }
 
@@ -509,7 +600,11 @@ func (h *ManuscriptArchiveHandler) PostImport(w http.ResponseWriter, r *http.Req
 	}
 	tmp, err := os.CreateTemp(h.cfg.DataDir, "manuscript-import-*.chron")
 	if err != nil {
-		archiveError(w, http.StatusInternalServerError, "Could not stage the manuscript archive")
+		archiveImportError(w, http.StatusInternalServerError, manuscriptArchiveErrorResponse{
+			Error: "The .chron upload could not be staged.", Code: "staging_failed", Stage: "upload",
+			Detail: err.Error(), RolledBack: true, Imported: 0, Retryable: true,
+			Log: []string{"Could not create a protected temporary archive file.", "The database transaction never started; no data was changed."},
+		})
 		return
 	}
 	tmpName := tmp.Name()
@@ -520,28 +615,72 @@ func (h *ManuscriptArchiveHandler) PostImport(w http.ResponseWriter, r *http.Req
 	if copyErr != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(copyErr, &tooLarge) {
-			archiveError(w, http.StatusRequestEntityTooLarge, "The .chron archive is larger than 256 MB")
+			archiveImportError(w, http.StatusRequestEntityTooLarge, manuscriptArchiveErrorResponse{
+				Error: "The .chron archive exceeds the 256 MB compressed upload limit.", Code: "archive_too_large", Stage: "upload",
+				Detail: fmt.Sprintf("Received more than %d bytes; use a smaller archive or split the library.", maxManuscriptArchiveBytes), RolledBack: true, Imported: 0,
+				Log: []string{"Stopped reading when the compressed-size safety limit was exceeded.", "Validation and the database transaction did not start; no data was changed."},
+			})
 		} else {
-			archiveError(w, http.StatusBadRequest, "Could not read the .chron archive")
+			archiveImportError(w, http.StatusBadRequest, manuscriptArchiveErrorResponse{
+				Error: "The .chron upload could not be read completely.", Code: "upload_read_failed", Stage: "upload",
+				Detail: copyErr.Error(), RolledBack: true, Imported: 0, Retryable: true,
+				Log: []string{"The upload ended or failed before staging completed.", "Validation and the database transaction did not start; no data was changed."},
+			})
 		}
 		return
 	}
 	if closeErr != nil {
-		archiveError(w, http.StatusInternalServerError, "Could not stage the manuscript archive")
+		archiveImportError(w, http.StatusInternalServerError, manuscriptArchiveErrorResponse{
+			Error: "The staged .chron upload could not be finalized.", Code: "staging_failed", Stage: "upload",
+			Detail: closeErr.Error(), RolledBack: true, Imported: 0, Retryable: true,
+			Log: []string{fmt.Sprintf("Received %d byte(s), but closing the temporary file failed.", written), "The database transaction did not start; no data was changed."},
+		})
 		return
 	}
 	if written == 0 {
-		archiveError(w, http.StatusBadRequest, "Choose a .chron archive to import")
+		archiveImportError(w, http.StatusBadRequest, manuscriptArchiveErrorResponse{
+			Error: "Choose a non-empty .chron archive to import.", Code: "empty_archive", Stage: "upload",
+			Detail: "The request body contained zero bytes.", RolledBack: true, Imported: 0,
+			Log: []string{"No archive data was received.", "Validation and the database transaction did not start; no data was changed."},
+		})
 		return
 	}
 	decoded, err := decodeArchive(tmpName)
 	if err != nil {
-		archiveError(w, http.StatusBadRequest, err.Error())
+		status := http.StatusBadRequest
+		code := "invalid_archive"
+		stage := "validation"
+		if strings.Contains(err.Error(), "unsupported .chron format or version") {
+			status = http.StatusUnprocessableEntity
+			code = "unsupported_version"
+			stage = "manifest"
+		} else if strings.Contains(err.Error(), "compression") {
+			status = http.StatusUnprocessableEntity
+			code = "unsupported_compression"
+			stage = "manifest"
+		}
+		archiveImportError(w, status, manuscriptArchiveErrorResponse{
+			Error: "The .chron archive could not be imported.", Code: code, Stage: stage,
+			Detail: err.Error(), RolledBack: true, Imported: 0, Retryable: false,
+			Log: []string{
+				fmt.Sprintf("Received and staged %d byte(s).", written),
+				"Archive validation failed before the database transaction began.",
+				"No manuscripts, chapters, covers, change history, or replica jobs were written.",
+			},
+		})
 		return
 	}
 	result, err := h.importArchive(userID, decoded)
 	if err != nil {
-		archiveError(w, http.StatusInternalServerError, "Could not import manuscripts: "+err.Error())
+		archiveImportError(w, http.StatusInternalServerError, manuscriptArchiveErrorResponse{
+			Error: "The .chron import failed and was not applied.", Code: "atomic_import_failed", Stage: "database",
+			Detail: err.Error(), RolledBack: true, Imported: 0, Retryable: true,
+			Log: []string{
+				fmt.Sprintf("Validated .chron format v%d with %d manuscript payload(s).", manuscriptArchiveVersion, len(decoded)),
+				"A database, cover-storage, or replica-queue operation failed inside the atomic transaction.",
+				"Rolled back the complete transaction: zero manuscripts from this import were retained.",
+			},
+		})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
