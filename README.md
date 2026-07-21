@@ -10,15 +10,6 @@ environment-variable and database names retain `chronicle` for backward
 compatibility, while the application, repository, and published image are
 Chronicler.
 
-## Demo
-
-<p align="center">
-  <video src="screenshots/demo.webm" controls width="90%" poster="screenshots/landing_page.webp"></video>
-</p>
-
-A quick walkthrough: starting a manuscript, writing a chapter, titling the
-book, adding a second chapter, and switching to Night Mode.
-
 ## Screenshots
 
 **The Library** — manuscripts in light and dark mode:
