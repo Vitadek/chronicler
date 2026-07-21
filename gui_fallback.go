@@ -1,4 +1,4 @@
-//go:build headless || !cgo
+//go:build headless
 
 package main
 
