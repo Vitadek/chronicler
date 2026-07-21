@@ -396,6 +396,9 @@ golang.org/x/text/transform
 # gopkg.in/warnings.v0 v0.1.2
 ## explicit
 gopkg.in/warnings.v0
+# gopkg.in/yaml.v3 v3.0.1
+## explicit
+gopkg.in/yaml.v3
 # modernc.org/libc v1.74.1
 ## explicit; go 1.25.0
 modernc.org/libc

@@ -18,6 +18,7 @@ require (
 	github.com/webview/webview_go v0.0.0-20240831120633-6173450d4dd6
 	golang.org/x/net v0.57.0
 	golang.org/x/oauth2 v0.36.0
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.54.0
 )
 

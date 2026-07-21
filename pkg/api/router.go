@@ -198,6 +198,17 @@ func (sr *ServerRouter) Init() http.Handler {
 				subR.ServeHTTP(w, r)
 			}))
 
+			// Hugo Publish Endpoints — lets plugins commit/push manuscript
+			// content to an external Hugo site repo. No DB dependency: the
+			// git credential travels per-request from the calling plugin,
+			// never persisted here.
+			hugoH := NewHugoPublishHandler()
+			authGroup.Mount("/hugopublish", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				subR := chi.NewRouter()
+				hugoH.Mount(subR)
+				subR.ServeHTTP(w, r)
+			}))
+
 			// Backup Endpoints (only enabled if LocalAdmin is true)
 			if sr.cfg.LocalAdmin {
 				backupH := NewBackupHandler(sr.cfg, sr.database)

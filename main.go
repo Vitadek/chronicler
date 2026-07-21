@@ -13,6 +13,7 @@ import (
 	"chronicle-server/pkg/collab"
 	"chronicle-server/pkg/config"
 	"chronicle-server/pkg/db"
+	"chronicle-server/pkg/hugopublish"
 	"chronicle-server/pkg/plugins"
 	"chronicle-server/pkg/replica"
 )
@@ -67,6 +68,9 @@ func main() {
 
 	// Seed plugins on first boot
 	_ = plugins.SeedPlugins(cfg.DataDir)
+
+	// Point the Hugo-publish plugin's git clone cache at this instance's data dir
+	hugopublish.Init(cfg.DataDir)
 
 	// Create and initialize the central HTTP router
 	router := api.NewServerRouter(cfg, database, collabHub, repManager, WebFS)
