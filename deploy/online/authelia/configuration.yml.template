@@ -1,0 +1,44 @@
+server:
+  address: tcp://0.0.0.0:9091
+  endpoints:
+    authz:
+      auth-request:
+        implementation: AuthRequest
+log:
+  level: info
+  keep_stdout: true
+theme: auto
+totp:
+  issuer: __SERVER_NAME__
+identity_validation:
+  reset_password:
+    jwt_secret: __JWT_SECRET__
+authentication_backend:
+  file:
+    path: /config/users_database.yml
+    watch: true
+access_control:
+  default_policy: deny
+  rules:
+    - domain: __AUTH_DOMAIN__
+      policy: one_factor
+    - domain: __SERVER_NAME__
+      policy: one_factor
+session:
+  name: authelia_session
+  secret: __SESSION_SECRET__
+  expiration: 1h
+  inactivity: 5m
+  remember_me: 1M
+  cookies:
+    - domain: __SERVER_NAME__
+      authelia_url: https://__AUTH_DOMAIN__
+      default_redirection_url: https://__SERVER_NAME__
+storage:
+  encryption_key: __STORAGE_KEY__
+  local:
+    path: /data/db.sqlite3
+notifier:
+  disable_startup_check: true
+  filesystem:
+    filename: /data/notification.txt

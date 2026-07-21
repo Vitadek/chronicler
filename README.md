@@ -109,6 +109,10 @@ deployments should use token, forward-auth, or OIDC mode. Anonymous non-loopback
 binding fails closed unless `ALLOW_INSECURE_NO_AUTH=true` is explicitly set for
 a trusted private network.
 
+For an online single-user installation with Nginx, IPv4/IPv6, HTTP/3/QUIC,
+Authelia forward-auth, ACME renewal, and plugin installation through the
+authenticated origin, see [`deploy/online/README.md`](deploy/online/README.md).
+
 ## Maintenance
 
 The same image provides the storage and recovery CLI:

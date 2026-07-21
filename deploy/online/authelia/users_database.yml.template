@@ -1,0 +1,7 @@
+users:
+  __AUTHELIA_USER__:
+    displayname: __AUTHELIA_USER__
+    password: '__PASSWORD_HASH__'
+    email: __AUTHELIA_EMAIL__
+    groups:
+      - __AUTHELIA_ADMIN_GROUP__

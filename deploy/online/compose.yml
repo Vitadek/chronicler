@@ -1,0 +1,68 @@
+name: chronicler-online
+
+services:
+  chronicler:
+    image: ${CHRONICLER_IMAGE}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      DATA_DIR: /data
+      AUTH_MODE: forward
+      AUTH_FORWARD_TRUSTED_PROXIES: ${CHRONICLER_TRUSTED_PROXY_CIDR}
+      AUTH_FORWARD_SECRET_HEADER: X-Forward-Auth-Secret
+      AUTH_FORWARD_SECRET: ${CHRONICLER_FORWARD_SECRET}
+      AUTH_FORWARD_ADMIN_GROUP: ${AUTHELIA_ADMIN_GROUP}
+      STORAGE_REPLICA: none
+    volumes:
+      - ./data/chronicler:/data
+    networks: [app]
+  authelia:
+    image: ${AUTHELIA_IMAGE}
+    restart: unless-stopped
+    command: authelia --config /config/configuration.yml
+    volumes:
+      - ./authelia/config:/config:ro
+      - ./data/authelia:/data
+    expose: [9091]
+    networks: [app]
+  nginx:
+    image: ${NGINX_IMAGE}
+    restart: unless-stopped
+    depends_on: [chronicler, authelia]
+    ports:
+      - "80:80/tcp"
+      - "[::]:80:80/tcp"
+      - "443:443/tcp"
+      - "[::]:443:443/tcp"
+      - "443:443/udp"
+      - "[::]:443:443/udp"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./data/certs:/etc/letsencrypt:ro
+      - ./data/acme:/var/www/certbot:ro
+    networks: [app]
+  certbot:
+    image: ${CERTBOT_IMAGE}
+    restart: unless-stopped
+    depends_on: [nginx]
+    pid: "service:nginx"
+    entrypoint: ["/bin/sh", "-ec"]
+    command: >-
+      while :; do
+        certbot renew --webroot -w /var/www/certbot --quiet;
+        kill -HUP 1;
+        sleep 12h;
+      done
+    volumes:
+      - ./data/certs:/etc/letsencrypt
+      - ./data/acme:/var/www/certbot
+    networks: [app]
+
+networks:
+  app:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+        - subnet: fd42:5c8b:9d31:1::/64
