@@ -104,6 +104,56 @@ function sameAuthorState(a: Manuscript, b: Manuscript): boolean {
   return true;
 }
 
+export interface ChapterBaseline {
+  title: string;
+  content: string;
+  position: number;
+}
+
+export interface SaveBaseline {
+  chapters: Map<string, ChapterBaseline>;
+}
+
+/** Snapshot of an authoritative (server-returned) manuscript, keyed for the
+ *  dirty-chapter diff in the request builder below. Response order IS
+ *  position order (see LoadManuscript's `ORDER BY position ASC`). */
+export function baselineFromManuscript(manuscript: Manuscript): SaveBaseline {
+  const chapters = new Map<string, ChapterBaseline>();
+  manuscript.chapters.forEach((chapter, index) => {
+    chapters.set(chapter.id, { title: chapter.title, content: chapter.content, position: index });
+  });
+  return { chapters };
+}
+
+/**
+ * Chapters to actually send: every chapter gets its TRUE index stamped as
+ * `position` (this alone fixes a real bug — the collab-chapter exclusion
+ * below shifts later chapters' array indices, and the server used to
+ * silently renumber them to the shifted value). With no baseline (a fresh
+ * session, or after any failure/409/conflict-draft operation — see callers),
+ * every chapter is sent, matching pre-partial-payload behavior exactly.
+ * With a baseline, only new chapters or chapters whose title/content/position
+ * differ from it are sent — the server leaves omitted chapters untouched
+ * (SaveLegacyManuscript only touches chapters present in the payload; see
+ * manuscriptService.deleteChapter's comment on why deletion is a separate
+ * explicit call, not payload omission).
+ */
+export function chaptersForRequest(
+  manuscript: Manuscript,
+  excludeId: string | null,
+  baseline: SaveBaseline | null,
+): Manuscript['chapters'] {
+  return manuscript.chapters
+    .map((chapter, index) => ({ ...chapter, position: index }))
+    .filter((chapter) => chapter.id !== excludeId)
+    .filter((chapter) => {
+      if (!baseline) return true;
+      const prior = baseline.chapters.get(chapter.id);
+      if (!prior) return true;
+      return prior.title !== chapter.title || prior.content !== chapter.content || prior.position !== chapter.position;
+    });
+}
+
 /** Rebase a queued immutable snapshot onto revisions acknowledged by PUT A. */
 function rebaseRevisions(manuscript: Manuscript, saved: Manuscript): Manuscript {
   const revisions = new Map(saved.chapters.map((chapter) => [chapter.id, chapter.revision]));
@@ -155,6 +205,11 @@ export function useManuscriptAutosave({
   const observationRef = useRef<Observation | null>(null);
   const pendingRef = useRef<SaveJob | null>(null);
   const latestRef = useRef<SaveJob | null>(null);
+  /** Null means "send every chapter" — the only state that's always correct.
+   *  Built from the authoritative response after a successful PUT; cleared
+   *  on any failure/409/conflict-draft/reload-server-version operation so
+   *  the next save is a full, unambiguous payload. */
+  const saveBaselineRef = useRef<SaveBaseline | null>(null);
   const inFlightRef = useRef<Promise<boolean> | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const journalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -244,12 +299,19 @@ export function useManuscriptAutosave({
     const request = (async (): Promise<boolean> => {
       try {
         const excludeId = collabActiveChapterIdRef.current;
-        const manuscriptForRequest = excludeId
-          ? { ...job.manuscript, chapters: job.manuscript.chapters.filter((c) => c.id !== excludeId) }
-          : job.manuscript;
+        const manuscriptForRequest = {
+          ...job.manuscript,
+          chapters: chaptersForRequest(job.manuscript, excludeId, saveBaselineRef.current),
+        };
         const saved = await manuscriptService.update(job.manuscriptId, manuscriptForRequest);
         if (activeSessionRef.current === job.sessionKey) {
           persistedVersionRef.current = job.version;
+          // The response is the server's authoritative post-save state — the
+          // next save's dirty-diff baseline. Any chapter this session's local
+          // state still disagrees with (e.g. the collab-excluded one) simply
+          // won't match its baseline entry and gets resent, so excluding it
+          // above doesn't create a permanent blind spot.
+          saveBaselineRef.current = baselineFromManuscript(saved);
           onSavedRef.current?.(saved, job.sessionKey);
 
           const latest = latestRef.current;
@@ -280,6 +342,10 @@ export function useManuscriptAutosave({
         }
         return true;
       } catch (cause) {
+        // Uncertain what the server actually has (the request may or may not
+        // have been applied before failing) — the next save goes out as a
+        // full payload rather than risk diffing against a stale baseline.
+        saveBaselineRef.current = null;
         if (activeSessionRef.current === job.sessionKey) {
           const latest = latestRef.current;
           pendingRef.current = latest?.sessionKey === job.sessionKey ? latest : job;
@@ -356,6 +422,7 @@ export function useManuscriptAutosave({
       pausedRef.current = false;
       pendingRef.current = null;
       journalVersionRef.current = null;
+      saveBaselineRef.current = null;
       conflictRef.current = null;
       restoringConflictDraftRef.current = false;
       setHasConflictRecovery(false);
@@ -376,6 +443,10 @@ export function useManuscriptAutosave({
         manuscriptFingerprint(manuscript) !== baselineFingerprint;
       persistedVersionRef.current = initialDirty ? currentVersion - 1 : currentVersion;
       journalVersionRef.current = initialDirty ? null : currentVersion;
+      // A new session's first save always goes out full: we don't have (and
+      // shouldn't guess at) the server's actual per-chapter state yet, only
+      // a whole-manuscript fingerprint comparison.
+      saveBaselineRef.current = null;
       pendingRef.current = null;
       conflictRef.current = null;
       restoringConflictDraftRef.current = false;
@@ -534,6 +605,9 @@ export function useManuscriptAutosave({
     clearManuscriptDraft(conflict.manuscriptId);
     journalVersionRef.current = null;
     pendingRef.current = null;
+    // conflict.authoritative IS the server's real current state — a more
+    // precise baseline than nulling, not just a safe fallback.
+    saveBaselineRef.current = baselineFromManuscript(conflict.authoritative);
 
     const version = observationRef.current?.sessionKey === conflict.sessionKey
       ? observationRef.current.version
@@ -572,6 +646,9 @@ export function useManuscriptAutosave({
       persistedVersionRef.current,
       observationRef.current?.version ?? 0,
     ) + 1;
+    // The restored draft is the user's own pre-conflict local state, not a
+    // confirmed server response — go out full next time.
+    saveBaselineRef.current = null;
     observationRef.current = { sessionKey: latest.sessionKey, manuscript: restored, version };
     const restoredJob = { ...latest, manuscript: restored, version };
     latestRef.current = restoredJob;

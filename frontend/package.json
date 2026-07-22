@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
-    "test": "tsx scripts/schemaRoundTrip.test.ts && tsx scripts/coreRemoval.test.ts && tsx scripts/destroyedEditorGuard.test.ts && tsx scripts/authGateToken.test.ts && tsx scripts/pluginNullableResponse.test.ts && tsx scripts/chapterTitleClearable.test.ts && tsx scripts/singleLineTitle.test.ts"
+    "test": "tsx scripts/schemaRoundTrip.test.ts && tsx scripts/coreRemoval.test.ts && tsx scripts/destroyedEditorGuard.test.ts && tsx scripts/authGateToken.test.ts && tsx scripts/pluginNullableResponse.test.ts && tsx scripts/chapterTitleClearable.test.ts && tsx scripts/singleLineTitle.test.ts && tsx scripts/incrementalAutosave.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

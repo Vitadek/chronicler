@@ -22,6 +22,13 @@ export interface Chapter {
   lastModified: number;
   /** Server-assigned concurrency token. Omitted by pre-revision servers. */
   revision?: number;
+  /**
+   * Input-only: the chapter's true position, stamped on every outgoing PUT so
+   * a partial (dirty-chapters-only) payload doesn't get its included chapters
+   * renumbered by their index within the smaller array. The server never
+   * returns this (see pkg/db/manuscripts_repo.go's ChapterRecord.Position).
+   */
+  position?: number;
 }
 
 export interface ManuscriptMetadata {
