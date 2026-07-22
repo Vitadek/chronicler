@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"chronicle-server/pkg/auth"
@@ -11,6 +12,31 @@ import (
 
 	"github.com/go-chi/chi/v5"
 )
+
+// maxManuscriptWriteBytes caps a single create/update payload. This is the
+// only manuscript write path with no body-size limit today; every chapter's
+// full HTML travels in one JSON object (see db.SaveLegacyManuscript), so the
+// cap must comfortably fit a large book — collab's websocket frame cap for a
+// SINGLE chapter is 8 MiB (pkg/collab/collab.go), so 32 MiB is generous
+// headroom for a whole manuscript's worth of chapters in one request.
+const maxManuscriptWriteBytes = 32 << 20
+
+func decodeManuscriptBody(w http.ResponseWriter, r *http.Request, mRecord *db.ManuscriptRecord) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxManuscriptWriteBytes)
+	if err := json.NewDecoder(r.Body).Decode(mRecord); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Manuscript payload exceeds the 32 MB write limit"})
+		} else {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid manuscript payload"})
+		}
+		return false
+	}
+	return true
+}
 
 type ManuscriptsHandler struct {
 	cfg      *config.Config
@@ -96,10 +122,7 @@ func (h *ManuscriptsHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var mRecord db.ManuscriptRecord
-	if err := json.NewDecoder(r.Body).Decode(&mRecord); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid manuscript payload"})
+	if !decodeManuscriptBody(w, r, &mRecord) {
 		return
 	}
 
@@ -135,10 +158,7 @@ func (h *ManuscriptsHandler) update(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	var mRecord db.ManuscriptRecord
-	if err := json.NewDecoder(r.Body).Decode(&mRecord); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid manuscript payload"})
+	if !decodeManuscriptBody(w, r, &mRecord) {
 		return
 	}
 

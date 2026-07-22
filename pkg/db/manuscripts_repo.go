@@ -17,6 +17,12 @@ type ChapterRecord struct {
 	Content      string `json:"content"`
 	LastModified int64  `json:"lastModified"`
 	Revision     int    `json:"revision"`
+	// Position is accepted on input only and never populated by LoadManuscript
+	// (responses stay byte-compatible). When nil, the chapter's position falls
+	// back to its index in the incoming payload — today's behavior. Set
+	// explicitly by a client sending a partial (dirty-chapters-only) payload,
+	// so omitted chapters don't get renumbered by their new array index.
+	Position *int `json:"position,omitempty"`
 }
 
 type ManuscriptMetadata struct {
@@ -482,6 +488,16 @@ func SaveLegacyManuscript(database *sql.DB, userId string, manuscript *Manuscrip
 	// Process chapters
 	chapterMutated := false
 	for position, chapter := range manuscript.Chapters {
+		// Explicit Position (set by a client sending a partial,
+		// dirty-chapters-only payload) wins over the array index — otherwise
+		// a payload that omits unchanged chapters would renumber the ones it
+		// does include. Position == nil preserves today's index-based
+		// behavior exactly.
+		effectivePosition := position
+		if chapter.Position != nil {
+			effectivePosition = *chapter.Position
+		}
+
 		var cTitle, cContent sql.NullString
 		var cPosition sql.NullInt64
 		var cLastModified int64
@@ -498,14 +514,14 @@ func SaveLegacyManuscript(database *sql.DB, userId string, manuscript *Manuscrip
 			_, errInsert := tx.Exec(`
 				INSERT INTO chapters (user_id, manuscript_id, id, title, content, position, last_modified, deleted_at, revision)
 				VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 1)
-			`, userId, manuscriptId, chapter.ID, chapter.Title, chapter.Content, position, now)
+			`, userId, manuscriptId, chapter.ID, chapter.Title, chapter.Content, effectivePosition, now)
 			if errInsert != nil {
 				return nil, errInsert
 			}
 			_, _ = RecordChange(tx, userId, "chapter", &manuscriptId, chapter.ID, "upsert", 1, now)
 
 			// Replica enqueue
-			replData := replica.SerializeChapter(userId, manuscriptId, chapter.ID, chapter.Title, position, now, 1, chapter.Content)
+			replData := replica.SerializeChapter(userId, manuscriptId, chapter.ID, chapter.Title, effectivePosition, now, 1, chapter.Content)
 			_ = replica.EnqueueReplicaPut(tx, fmt.Sprintf("manuscripts/%s/%s/chapters/%s.html", userId, manuscriptId, chapter.ID), replData, "text/html; charset=utf-8")
 
 			chapterMutated = true
@@ -521,7 +537,7 @@ func SaveLegacyManuscript(database *sql.DB, userId string, manuscript *Manuscrip
 				Reason:           "deleted",
 			})
 		} else {
-			identical := cTitle.String == chapter.Title && cContent.String == chapter.Content && cPosition.Int64 == int64(position)
+			identical := cTitle.String == chapter.Title && cContent.String == chapter.Content && cPosition.Int64 == int64(effectivePosition)
 			expected := chapter.Revision
 			revisionMatches := expected == 0 || expected == cRevision
 			legacyFresh := expected != 0 || chapter.LastModified > cLastModified
@@ -551,14 +567,14 @@ func SaveLegacyManuscript(database *sql.DB, userId string, manuscript *Manuscrip
 					UPDATE chapters
 					   SET title = ?, content = ?, position = ?, last_modified = ?, deleted_at = NULL, revision = ?
 					 WHERE user_id = ? AND manuscript_id = ? AND id = ?
-				`, chapter.Title, chapter.Content, position, now, newRevision, userId, manuscriptId, chapter.ID)
+				`, chapter.Title, chapter.Content, effectivePosition, now, newRevision, userId, manuscriptId, chapter.ID)
 				if errUpdate != nil {
 					return nil, errUpdate
 				}
 				_, _ = RecordChange(tx, userId, "chapter", &manuscriptId, chapter.ID, "upsert", newRevision, now)
 
 				// Replica enqueue
-				replData := replica.SerializeChapter(userId, manuscriptId, chapter.ID, chapter.Title, position, now, newRevision, chapter.Content)
+				replData := replica.SerializeChapter(userId, manuscriptId, chapter.ID, chapter.Title, effectivePosition, now, newRevision, chapter.Content)
 				_ = replica.EnqueueReplicaPut(tx, fmt.Sprintf("manuscripts/%s/%s/chapters/%s.html", userId, manuscriptId, chapter.ID), replData, "text/html; charset=utf-8")
 
 				chapterMutated = true

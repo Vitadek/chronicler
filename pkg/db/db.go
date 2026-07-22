@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,6 +103,19 @@ func InitDB(dataDir string) (*sql.DB, error) {
 		return nil, fmt.Errorf("busy_timeout did not apply; concurrent writes would fail with SQLITE_BUSY")
 	}
 
+	// Catch page-level corruption before it ever reaches a request handler,
+	// the S3 replica, or a .chron backup. CHRONICLE_SKIP_INTEGRITY_CHECK is
+	// an escape hatch for emergency recovery on an already-corrupt DB (e.g.
+	// to boot just long enough to export a partial backup or inspect data).
+	if os.Getenv("CHRONICLE_SKIP_INTEGRITY_CHECK") != "1" {
+		if err := VerifyIntegrity(db); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("%w — restore from a .chron backup or the S3 replica, or set CHRONICLE_SKIP_INTEGRITY_CHECK=1 to boot anyway for recovery", err)
+		}
+	} else {
+		log.Println("[db] WARNING: CHRONICLE_SKIP_INTEGRITY_CHECK=1 — booting without verifying database integrity")
+	}
+
 	// Run migrations
 	if err := RunMigrations(db); err != nil {
 		db.Close()
@@ -134,6 +148,24 @@ func InitDB(dataDir string) (*sql.DB, error) {
 	return db, nil
 }
 
+// VerifyIntegrity runs SQLite's PRAGMA quick_check — a fast structural scan
+// (page linkage, index consistency) that catches corruption a normal query
+// would silently read through or panic on. It is NOT a substitute for
+// PRAGMA integrity_check (which also verifies row/foreign-key content) — see
+// the full integrity_check used on .chron backup import, where the cost of
+// a slower, more thorough scan is worth it for data entering from outside
+// the system.
+func VerifyIntegrity(database *sql.DB) error {
+	var result string
+	if err := database.QueryRow("PRAGMA quick_check").Scan(&result); err != nil {
+		return fmt.Errorf("failed to run integrity check: %w", err)
+	}
+	if !strings.EqualFold(result, "ok") {
+		return fmt.Errorf("database failed integrity check: %s", result)
+	}
+	return nil
+}
+
 func GC() {
 	if DB == nil {
 		return
@@ -148,6 +180,14 @@ func StartGCLoop() {
 		for {
 			time.Sleep(24 * time.Hour)
 			GC()
+			// Log-only: a running server must never crash on a scheduled
+			// check. Startup already refuses to boot on a corrupt DB; this
+			// is early warning for corruption that develops mid-uptime.
+			if DB != nil {
+				if err := VerifyIntegrity(DB); err != nil {
+					log.Printf("[db] WARNING: daily integrity check failed: %v", err)
+				}
+			}
 		}
 	}()
 }

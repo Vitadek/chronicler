@@ -60,6 +60,14 @@ func (h *BackupHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BackupHandler) PostExport(w http.ResponseWriter, r *http.Request) {
+	// Never archive a corrupt database over a good backup.
+	if err := db.VerifyIntegrity(h.database); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Refusing to export: " + err.Error()})
+		return
+	}
+
 	tmpFile := filepath.Join(h.cfg.DataDir, fmt.Sprintf("export-%s.db", stamp()))
 	defer os.Remove(tmpFile)
 
@@ -175,6 +183,25 @@ func (h *BackupHandler) PostImport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	// Full integrity_check (not just quick_check) for data entering from
+	// outside the system — worth the slower, more thorough scan here, unlike
+	// the fast quick_check used at startup/daily on the already-trusted live
+	// database.
+	var integrityResult string
+	if errCheck := probeDb.QueryRow("PRAGMA integrity_check").Scan(&integrityResult); errCheck != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Could not run integrity check: " + errCheck.Error()})
+		return
+	}
+	if !strings.EqualFold(integrityResult, "ok") {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Backup failed integrity check: " + integrityResult})
+		return
+	}
+
 	probeDb.Close() // Close early before removing file
 
 	// Safety backup of CURRENT database
