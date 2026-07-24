@@ -138,6 +138,16 @@ export interface PluginServices {
   /** LanguageTool proxy: lint text, returns offsets into the text passed in. */
   grammar: {
     lint(text: string): Promise<{ start: number; end: number; kind: string; message: string; replacements?: string[] }[]>;
+    /**
+     * Same contract as `lint`, but requests the optional, opt-in LanguageTool
+     * engine (n-grams/confusion-sets/disambiguation) instead of the built-in
+     * checker. Falls back to the built-in checker server-side if the
+     * sidecar is unreachable — callers don't need their own fallback.
+     * Currently used only by chronicle-plugin-proofreader.
+     */
+    lintEnhanced(text: string): Promise<{ start: number; end: number; kind: string; message: string; replacements?: string[] }[]>;
+    /** Whether the optional LanguageTool sidecar is currently reachable. */
+    enhancedAvailable(): Promise<boolean>;
   };
   /** The user's synced settings store (survives updates + follows devices). */
   settings: {

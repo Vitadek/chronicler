@@ -180,7 +180,7 @@ func (sr *ServerRouter) Init() http.Handler {
 			// Node server's LanguageTool sidecar proxy. A load failure is
 			// logged, not fatal: the handler then returns 503 and the editor
 			// carries on without squiggles.
-			grammarH, grammarErr := NewGrammarHandler()
+			grammarH, grammarErr := NewGrammarHandler(sr.cfg)
 			if grammarErr != nil {
 				log.Printf("[grammar] dictionary unavailable, checker disabled: %v", grammarErr)
 			}

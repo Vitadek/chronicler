@@ -8,7 +8,7 @@ import type {
   PluginServices,
 } from '../api';
 import { pluginService, type InstalledPlugin } from '../../services/pluginService';
-import { lintText } from '../../lib/grammar/languagetool';
+import { lintText, fetchGrammarCapabilities } from '../../lib/grammar/languagetool';
 import { authFetch } from '../../services/authService';
 
 /** A plugin that loaded successfully, with its live contributions. */
@@ -191,6 +191,8 @@ export const PluginHost: React.FC<{ children: React.ReactNode }> = ({ children }
     },
     grammar: {
       lint: (text: string) => lintText(text),
+      lintEnhanced: (text: string) => lintText(text, { engine: 'languagetool' }),
+      enhancedAvailable: () => fetchGrammarCapabilities().then((c) => c.languagetool.available),
     },
     settings: {
       get: (key: string) => localStorage.getItem(`chronicle_plugin_${key}`),

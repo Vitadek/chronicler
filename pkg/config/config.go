@@ -38,6 +38,7 @@ type Config struct {
 	Nextcloud    NextcloudConfig
 	Storage      StorageConfig
 	S3           S3Config
+	Grammar      GrammarConfig
 }
 
 type AuthConfig struct {
@@ -96,6 +97,11 @@ type S3Config struct {
 	AllowInsecureHttp    bool
 	ServerSideEncryption string
 	KmsKeyId             string
+}
+
+type GrammarConfig struct {
+	LanguagetoolUrl  string
+	LanguagetoolLang string
 }
 
 func envString(name string, fallback string) string {
@@ -227,6 +233,10 @@ func LoadConfig() (*Config, error) {
 			AllowInsecureHttp:    envBoolean("S3_ALLOW_INSECURE_HTTP", false),
 			ServerSideEncryption: envString("S3_SERVER_SIDE_ENCRYPTION", ""),
 			KmsKeyId:             envString("S3_KMS_KEY_ID", ""),
+		},
+		Grammar: GrammarConfig{
+			LanguagetoolUrl:  strings.TrimSuffix(envString("LANGUAGETOOL_URL", ""), "/"),
+			LanguagetoolLang: envString("LANGUAGETOOL_LANG", "en-US"),
 		},
 	}
 

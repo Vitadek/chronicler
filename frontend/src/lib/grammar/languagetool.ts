@@ -52,12 +52,12 @@ export async function loadGrammarEngine(): Promise<void> {
 }
 
 /**
- * Lint a chunk of text via the server's LanguageTool proxy, distinguishing a
+ * Lint a chunk of text via the server's grammar endpoint, distinguishing a
  * failed request (non-OK response, or a thrown fetch error — offline,
  * timeout, sidecar cold/restarting) from a genuinely clean paragraph: `null`
  * means "unknown, try again later" and must never be cached as "no issues".
  */
-export async function lintTextOrNull(text: string): Promise<GrammarHit[] | null> {
+export async function lintTextOrNull(text: string, opts?: { engine?: 'native' | 'languagetool' }): Promise<GrammarHit[] | null> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   const token = bearer();
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -65,7 +65,7 @@ export async function lintTextOrNull(text: string): Promise<GrammarHit[] | null>
     const res = await fetch(`${endpointBase}/api/grammar/check`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, ...(opts?.engine ? { engine: opts.engine } : {}) }),
     });
     if (!res.ok) return null;
     const data = (await res.json()) as { hits?: GrammarHit[] };
@@ -76,12 +76,30 @@ export async function lintTextOrNull(text: string): Promise<GrammarHit[] | null>
 }
 
 /**
- * Lint a chunk of text via the server's LanguageTool proxy. Part of the
- * plugin API surface (src/plugins/host/PluginHost.tsx, src/plugins/api/index.ts)
- * so its non-nullable `Promise<GrammarHit[]>` signature must stay as-is;
- * callers that need to distinguish failure from "no issues" (Grammar.ts's
- * cache) should use `lintTextOrNull` instead.
+ * Lint a chunk of text via the server's grammar endpoint. Part of the plugin
+ * API surface (src/plugins/host/PluginHost.tsx, src/plugins/api/index.ts) so
+ * its non-nullable `Promise<GrammarHit[]>` signature must stay as-is; callers
+ * that need to distinguish failure from "no issues" (Grammar.ts's cache)
+ * should use `lintTextOrNull` instead.
  */
-export async function lintText(text: string): Promise<GrammarHit[]> {
-  return (await lintTextOrNull(text)) ?? [];
+export async function lintText(text: string, opts?: { engine?: 'native' | 'languagetool' }): Promise<GrammarHit[]> {
+  return (await lintTextOrNull(text, opts)) ?? [];
+}
+
+interface GrammarCapabilities {
+  languagetool: { available: boolean };
+}
+
+/** Whether the optional LanguageTool sidecar is currently reachable. */
+export async function fetchGrammarCapabilities(): Promise<GrammarCapabilities> {
+  const headers: Record<string, string> = {};
+  const token = bearer();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  try {
+    const res = await fetch(`${endpointBase}/api/grammar/capabilities`, { headers });
+    if (!res.ok) return { languagetool: { available: false } };
+    return (await res.json()) as GrammarCapabilities;
+  } catch {
+    return { languagetool: { available: false } };
+  }
 }
