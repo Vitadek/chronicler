@@ -17,6 +17,22 @@ func TestKindFor_ConfusedWordsIsConfusion(t *testing.T) {
 	}
 }
 
+// Pinned against a live LanguageTool 6.8 response for "I saw their yesterday
+// at the park." with the n-gram model loaded: rule.id
+// "CONFUSION_RULE_THEIR_THERE", category.id "TYPOS", issueType
+// "non-conformance" — category alone (the other branch) does NOT catch this.
+func TestKindFor_ConfusionRuleIdIsConfusion(t *testing.T) {
+	m := ltMatch{}
+	m.Rule.Id = "CONFUSION_RULE_THEIR_THERE"
+	m.Rule.IssueType = "non-conformance"
+	m.Rule.Category.Id = "TYPOS"
+
+	got := kindFor(m)
+	if got != grammar.KindConfusion {
+		t.Errorf("kindFor(CONFUSION_RULE_*) = %q, want %q", got, grammar.KindConfusion)
+	}
+}
+
 func TestKindFor_FallsBackToIssueType(t *testing.T) {
 	m := ltMatch{}
 	m.Rule.IssueType = "style"

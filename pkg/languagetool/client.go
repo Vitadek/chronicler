@@ -43,6 +43,7 @@ type ltMatch struct {
 	Length  int    `json:"length"`
 	Message string `json:"message"`
 	Rule    struct {
+		Id        string `json:"id"`
 		IssueType string `json:"issueType"`
 		Category  struct {
 			Id string `json:"id"`
