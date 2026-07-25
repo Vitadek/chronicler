@@ -53,4 +53,10 @@ type Hit struct {
 	// Always serialized, never null: the Node route emitted `[]` when there
 	// were no candidates and ProofreadView indexes it without a guard.
 	Replacements []string `json:"replacements"`
+	// RuleID and Category are populated only by the optional LanguageTool
+	// engine (pkg/languagetool) — empty for native hits. Additive to the
+	// wire contract: existing consumers (grammar-check, tense-check) only
+	// ever read start/end/kind/message/replacements and are unaffected.
+	RuleID   string `json:"ruleId,omitempty"`
+	Category string `json:"category,omitempty"`
 }

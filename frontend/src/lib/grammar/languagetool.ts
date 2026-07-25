@@ -23,6 +23,9 @@ export interface GrammarHit {
   message: string;
   /** Correction candidates (misspellings and confusions), capped server-side. */
   replacements?: string[];
+  /** Populated only by the optional LanguageTool engine; absent for native hits. */
+  ruleId?: string;
+  category?: string;
 }
 
 let endpointBase = '';

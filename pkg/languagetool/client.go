@@ -101,6 +101,8 @@ func (c *Client) Check(ctx context.Context, text string) ([]grammar.Hit, error) 
 			Kind:         kindFor(m),
 			Message:      m.Message,
 			Replacements: replacements,
+			RuleID:       m.Rule.Id,
+			Category:     m.Rule.Category.Id,
 		})
 	}
 	return hits, nil
