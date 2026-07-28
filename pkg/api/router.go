@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"chronicle-server/pkg/activity"
 	"chronicle-server/pkg/auth"
 	"chronicle-server/pkg/collab"
 	"chronicle-server/pkg/config"
@@ -45,6 +46,7 @@ func (sr *ServerRouter) Init() http.Handler {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(corsMiddleware)
+	r.Use(activityMiddleware)
 
 	// Collaboration WS dumb relay
 	r.Handle("/collab", sr.collabHub)
@@ -180,7 +182,7 @@ func (sr *ServerRouter) Init() http.Handler {
 			// Node server's LanguageTool sidecar proxy. A load failure is
 			// logged, not fatal: the handler then returns 503 and the editor
 			// carries on without squiggles.
-			grammarH, grammarErr := NewGrammarHandler(sr.cfg)
+			grammarH, grammarErr := NewGrammarHandler(sr.cfg, sr.database)
 			if grammarErr != nil {
 				log.Printf("[grammar] dictionary unavailable, checker disabled: %v", grammarErr)
 			}
@@ -255,6 +257,25 @@ func (sr *ServerRouter) Init() http.Handler {
 	}
 
 	return r
+}
+
+// activityMiddleware records real traffic for pkg/grammarsweep's idle
+// detection (see pkg/activity). Registered before auth/routing so it counts
+// every request that reaches the server, not just successfully authenticated
+// ones — a hammering client should still be treated as "not idle" even if
+// its requests are being rejected.
+//
+// /healthz and /readyz are excluded: Docker healthchecks poll these every
+// couple of seconds (see docker/agent-2/docker-compose.yml's 2s interval),
+// which would otherwise make the server look permanently busy and the
+// background sweep would never run.
+func activityMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/healthz" && r.URL.Path != "/readyz" {
+			activity.Touch()
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func corsMiddleware(next http.Handler) http.Handler {

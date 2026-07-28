@@ -102,6 +102,15 @@ type S3Config struct {
 type GrammarConfig struct {
 	LanguagetoolUrl  string
 	LanguagetoolLang string
+	// BackgroundSweep enables an idle-triggered background job that proactively
+	// warms the grammar check cache (see pkg/grammar/cache.go) across the whole
+	// library. Off by default: it means unattended CPU/LanguageTool usage on
+	// the host whenever the server sits idle.
+	BackgroundSweep bool
+	// SweepIdleThresholdMs is how long the server must see no real traffic
+	// before the sweep starts/resumes a pass. Configurable mainly so it can be
+	// set low for testing — production deployments should keep the default.
+	SweepIdleThresholdMs int64
 }
 
 func envString(name string, fallback string) string {
@@ -235,8 +244,10 @@ func LoadConfig() (*Config, error) {
 			KmsKeyId:             envString("S3_KMS_KEY_ID", ""),
 		},
 		Grammar: GrammarConfig{
-			LanguagetoolUrl:  strings.TrimSuffix(envString("LANGUAGETOOL_URL", ""), "/"),
-			LanguagetoolLang: envString("LANGUAGETOOL_LANG", "en-US"),
+			LanguagetoolUrl:      strings.TrimSuffix(envString("LANGUAGETOOL_URL", ""), "/"),
+			LanguagetoolLang:     envString("LANGUAGETOOL_LANG", "en-US"),
+			BackgroundSweep:      envBoolean("GRAMMAR_BACKGROUND_SWEEP", false),
+			SweepIdleThresholdMs: int64(envInt("GRAMMAR_SWEEP_IDLE_THRESHOLD_MS", 3*60*1000)),
 		},
 	}
 

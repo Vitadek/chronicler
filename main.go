@@ -13,6 +13,7 @@ import (
 	"chronicle-server/pkg/collab"
 	"chronicle-server/pkg/config"
 	"chronicle-server/pkg/db"
+	"chronicle-server/pkg/grammarsweep"
 	"chronicle-server/pkg/hugopublish"
 	"chronicle-server/pkg/plugins"
 	"chronicle-server/pkg/replica"
@@ -65,6 +66,18 @@ func main() {
 
 	// Start replica manager background queue drain
 	repManager.Start()
+
+	// Background grammar-check cache sweep — no-op unless
+	// GRAMMAR_BACKGROUND_SWEEP is set (see config.GrammarConfig). A dictionary
+	// load failure here degrades the same way NewGrammarHandler does: log and
+	// skip, rather than taking down a server whose primary job is writing.
+	sweeper, sweeperErr := grammarsweep.NewSweeper(cfg, database)
+	if sweeperErr != nil {
+		fmt.Printf("[grammarsweep] disabled, dictionary unavailable: %v\n", sweeperErr)
+	} else {
+		sweeper.Start()
+		defer sweeper.Close()
+	}
 
 	// Seed plugins on first boot
 	_ = plugins.SeedPlugins(cfg.DataDir)

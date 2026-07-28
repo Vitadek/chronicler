@@ -342,6 +342,21 @@ var migrations = []Migration{
 			return err
 		},
 	},
+	{
+		Name: "grammar_001_check_cache",
+		Up: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`
+				CREATE TABLE IF NOT EXISTS grammar_check_cache (
+					text_hash   TEXT NOT NULL,
+					engine      TEXT NOT NULL,
+					hits_json   TEXT NOT NULL,
+					computed_at INTEGER NOT NULL,
+					PRIMARY KEY (text_hash, engine)
+				);
+			`)
+			return err
+		},
+	},
 }
 
 type DeletedManuscript struct {

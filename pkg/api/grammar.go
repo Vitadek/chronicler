@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -27,6 +28,7 @@ type GrammarHandler struct {
 	dict     *grammar.Dictionary
 	lt       *languagetool.Client
 	ltProber *languagetool.Prober
+	database *sql.DB
 }
 
 // NewGrammarHandler loads the embedded dictionary and, if LANGUAGETOOL_URL
@@ -36,9 +38,9 @@ type GrammarHandler struct {
 // degrades to returning empty results so the editor keeps working without
 // squiggles, rather than taking down an app whose primary job is writing,
 // not linting.
-func NewGrammarHandler(cfg *config.Config) (*GrammarHandler, error) {
+func NewGrammarHandler(cfg *config.Config, database *sql.DB) (*GrammarHandler, error) {
 	lt := languagetool.New(cfg)
-	h := &GrammarHandler{lt: lt, ltProber: languagetool.NewProber(lt)}
+	h := &GrammarHandler{lt: lt, ltProber: languagetool.NewProber(lt), database: database}
 
 	dict, err := grammar.Load()
 	if err != nil {
@@ -82,10 +84,13 @@ func (h *GrammarHandler) postCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Engine == "languagetool" && h.lt != nil && h.ltProber.Available() {
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-		defer cancel()
-		if hits, err := h.lt.Check(ctx, req.Text); err == nil {
+	if req.Engine == grammar.EngineLanguagetool && h.lt != nil && h.ltProber.Available() {
+		hits, err := grammar.CheckCached(h.database, req.Text, grammar.EngineLanguagetool, func() ([]grammar.Hit, error) {
+			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+			defer cancel()
+			return h.lt.Check(ctx, req.Text)
+		})
+		if err == nil {
 			writeHits(w, http.StatusOK, hits)
 			return
 		}
@@ -100,7 +105,10 @@ func (h *GrammarHandler) postCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeHits(w, http.StatusOK, h.dict.Check(req.Text))
+	hits, _ := grammar.CheckCached(h.database, req.Text, grammar.EngineNative, func() ([]grammar.Hit, error) {
+		return h.dict.Check(req.Text), nil
+	})
+	writeHits(w, http.StatusOK, hits)
 }
 
 type grammarCapabilitiesResponse struct {
