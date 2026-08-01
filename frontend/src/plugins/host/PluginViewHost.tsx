@@ -24,10 +24,9 @@ export const PluginViewHost: React.FC = () => {
   // The view is opened FOR a manuscript (a library card action passes one),
   // which is not necessarily the manuscript currently open in the editor —
   // from the Library nothing is open at all. The routed id wins.
-  const base = makeContext(activeView.pluginId);
+  const base = makeContext(activeView.pluginId, activeView.manuscriptId ?? undefined);
   const ctx = {
     ...base,
-    manuscriptId: activeView.manuscriptId ?? base.manuscriptId,
     close: closeView,
   };
 

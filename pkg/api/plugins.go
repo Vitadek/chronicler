@@ -78,6 +78,27 @@ func (h *PluginsHandler) userRows(userId string) ([]UserPluginState, error) {
 	return states, nil
 }
 
+// pluginStateBlobs keeps the global and manuscript-scoped records separate in
+// the API response. The frontend plugin API is synchronous, so it hydrates both
+// mirrors when the plugin list loads; without the scoped map, a full-page view
+// opened from Library had no manuscript state to read and could accidentally
+// write through the global record instead.
+func pluginStateBlobs(rows []UserPluginState, pluginID string) (string, map[string]string) {
+	global := "{}"
+	manuscripts := make(map[string]string)
+	for _, row := range rows {
+		if row.PluginID != pluginID {
+			continue
+		}
+		if row.ManuscriptID == nil || *row.ManuscriptID == "" {
+			global = row.State
+			continue
+		}
+		manuscripts[*row.ManuscriptID] = row.State
+	}
+	return global, manuscripts
+}
+
 func (h *PluginsHandler) listForUser(userId string) ([]plugins.ResolveInput, error) {
 	rows, err := h.userRows(userId)
 	if err != nil {
@@ -189,6 +210,13 @@ func (h *PluginsHandler) GetPlugins(w http.ResponseWriter, r *http.Request) {
 
 	pluginsDir := filepath.Join(h.cfg.DataDir, "plugins")
 	responsePlugins := make([]map[string]interface{}, 0)
+	stateRows, err := h.userRows(userId)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
 
 	for _, p := range pluginsList {
 		disk, _ := plugins.DescribePlugin(pluginsDir, p.ID)
@@ -214,15 +242,9 @@ func (h *PluginsHandler) GetPlugins(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Retrieve user specific state
-		state := "{}"
-		rows, _ := h.userRows(userId)
-		for _, r := range rows {
-			if r.PluginID == p.ID && r.ManuscriptID == nil {
-				state = r.State
-				break
-			}
-		}
+		// Retrieve global and per-manuscript state in one pass over the user's
+		// records. They remain distinct records all the way to the plugin host.
+		state, manuscriptStates := pluginStateBlobs(stateRows, p.ID)
 
 		pm := map[string]interface{}{
 			"id":                p.ID,
@@ -242,6 +264,7 @@ func (h *PluginsHandler) GetPlugins(w http.ResponseWriter, r *http.Request) {
 			"dependencies":      disk.Dependencies,
 			"enabled":           p.Enabled,
 			"state":             state,
+			"manuscriptStates":  manuscriptStates,
 			"status":            status,
 			"missingReasons":    missingReasons,
 			"unmetWantsReasons": unmetWantsReasons,

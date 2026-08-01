@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
+import type { AnyExtension } from '@tiptap/core';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import Collaboration from '@tiptap/extension-collaboration';
 import * as Y from 'yjs';
@@ -13,6 +14,9 @@ interface CollabEditorProps {
   /** Bearer token if the collab socket needs auth (OIDC phase). */
   token?: string;
   className?: string;
+  /** Same enabled-plugin schema extensions used by the normal editor. Omitting
+   *  these in collaboration mode makes Yjs unable to represent plugin marks. */
+  pluginExtensions?: AnyExtension[];
   /** Hands the live TipTap editor up to the parent — same contract as
    *  EditorView's onEditorReady — so App's activeEditor (Comments panel,
    *  plugin runtime, selection actions) targets the editor the user is
@@ -46,6 +50,7 @@ export const CollabEditor: React.FC<CollabEditorProps> = ({
   collabUrl,
   token,
   className,
+  pluginExtensions,
   onEditorReady,
 }) => {
   const [session, setSession] = useState<CollabSession | null>(null);
@@ -88,9 +93,12 @@ export const CollabEditor: React.FC<CollabEditorProps> = ({
   // the Collaboration-bound one the moment the provider is ready.
   const editor = useEditor(
     {
-      extensions: buildCoreExtensions(
-        session ? { collabExtension: Collaboration.configure({ document: session.ydoc }) } : {},
-      ),
+      extensions: [
+        ...buildCoreExtensions(
+          session ? { collabExtension: Collaboration.configure({ document: session.ydoc }) } : {},
+        ),
+        ...(pluginExtensions ?? []),
+      ],
       editable: !!session,
       editorProps: {
         attributes: {
@@ -100,7 +108,7 @@ export const CollabEditor: React.FC<CollabEditorProps> = ({
         },
       },
     },
-    [session],
+    [session, pluginExtensions],
   );
 
   useEffect(() => {

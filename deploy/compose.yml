@@ -71,6 +71,11 @@ services:
       S3_KMS_KEY_ID: ${S3_KMS_KEY_ID:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+
+      # --- Optional deployment-managed grammar adapters. ---
+      # Mount deploy/grammar/providers.example.yml with the grammar Compose
+      # override, then set this path inside the container.
+      GRAMMAR_PROVIDERS_FILE: ${GRAMMAR_PROVIDERS_FILE:-}
     volumes:
       - chronicle-data:/data
     healthcheck:

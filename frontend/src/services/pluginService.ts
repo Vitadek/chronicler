@@ -27,6 +27,9 @@ export interface InstalledPlugin {
   /** This user's toggle + persisted state. */
   enabled: boolean;
   state: string;
+  /** Persisted state blobs keyed by manuscript id. Kept separate from `state`
+   *  so a manuscript-scoped write can never overwrite global preferences. */
+  manuscriptStates: Record<string, string>;
   /** Populated by POST /:id/check-updates. */
   updateAvailable?: boolean;
   incoming?: PluginCommit[];
@@ -83,6 +86,10 @@ export function normalizePluginState(value: Partial<PluginState> | null | undefi
   return {
     plugins: plugins.map((plugin) => ({
       ...plugin,
+      manuscriptStates:
+        plugin.manuscriptStates && typeof plugin.manuscriptStates === 'object' && !Array.isArray(plugin.manuscriptStates)
+          ? plugin.manuscriptStates
+          : {},
       provides: Array.isArray(plugin.provides) ? plugin.provides : [],
       requires: Array.isArray(plugin.requires) ? plugin.requires : [],
       wants: Array.isArray(plugin.wants) ? plugin.wants : [],

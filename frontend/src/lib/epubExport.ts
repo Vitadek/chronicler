@@ -3,6 +3,7 @@ import { saveAs } from 'file-saver';
 import { Chapter, ManuscriptMetadata } from '../types';
 import { fileTimestamp } from './exportFilename';
 import { loadCoverBlobUrl } from '../services/coverService';
+import { sanitizeEpubChapterHtml } from './exportSanitize';
 
 /**
  * EPUB3 export.
@@ -76,20 +77,6 @@ function defaultCoverSvg(title: string, author: string): string {
   <text x="800" y="2200" text-anchor="middle" fill="#9a8d75"
         font-family="Georgia, serif" font-size="36" letter-spacing="12">CHRONICLER</text>
 </svg>`;
-}
-
-/** Sanitise chapter HTML to be valid XHTML-ish: void tags self-close. */
-function cleanChapterHtml(html: string): string {
-  return html
-    .replace(/<br\s*\/?>/gi, '<br/>')
-    .replace(/<hr\s*\/?>/gi, '<hr/>')
-    .replace(/<img([^>]*?)\/?>/gi, '<img$1/>')
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/\son\w+="[^"]*"/gi, '')
-    // Strip our internal mark spans (data-comment, data-audio-token) so the
-    // exported book doesn't carry editor metadata.
-    .replace(/\sdata-(comment|audio-token|from|to)="[^"]*"/g, '')
-    .replace(/<span\s*(?:class="manuscript-(?:comment|audio)-marker"\s*)?>([^<]*)<\/span>/g, '$1');
 }
 
 /** Format the package <dc:date>: RFC 3339 UTC. */
@@ -356,7 +343,7 @@ export async function exportToEpub(
   // Chapter XHTML files.
   const chaptersFolder = oebps.folder('chapters')!;
   chapters.forEach((c, i) => {
-    chaptersFolder.file(`c${i + 1}.xhtml`, chapterXhtml(c.title || `Chapter ${i + 1}`, cleanChapterHtml(c.content || '')));
+    chaptersFolder.file(`c${i + 1}.xhtml`, chapterXhtml(c.title || `Chapter ${i + 1}`, sanitizeEpubChapterHtml(c.content || '')));
   });
 
   const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/epub+zip' });

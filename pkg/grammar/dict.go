@@ -33,6 +33,11 @@ var frequencyBytes []byte
 // Dictionary is the loaded spelling data: Hunspell for membership, a frequency
 // ranking for ordering suggestions.
 type Dictionary struct {
+	// gospell lazily expands affixes into internal maps during Spell calls.
+	// Those maps are not concurrency-safe, so serialize only the individual
+	// membership lookups that touch gospell. The rest of a paragraph check is
+	// read-only and can run concurrently with checks for other paragraphs.
+	spellMu sync.Mutex
 	// spellers are consulted in order; a word known to ANY of them is correct.
 	//
 	// Both US and GB are loaded because Chronicler must not impose a dialect on
@@ -45,6 +50,11 @@ type Dictionary struct {
 	// rank maps a lowercase word to its corpus rank (0 = most frequent).
 	// Only used to order candidates that already passed a speller.
 	rank map[string]int
+	// suggestionWords indexes the embedded frequency vocabulary by byte length.
+	// It replaces the old edit-distance-2 expansion (millions of temporary
+	// strings for one typo) with a fixed, read-only candidate set. The source
+	// vocabulary is lowercase ASCII English, so byte length is character length.
+	suggestionWords map[int][]string
 }
 
 var (
@@ -81,6 +91,7 @@ func Load() (*Dictionary, error) {
 		}
 
 		rank := make(map[string]int, 50_000)
+		suggestionWords := make(map[int][]string)
 		scanner := bufio.NewScanner(bytes.NewReader(frequencyBytes))
 		for i := 0; scanner.Scan(); {
 			word := strings.TrimSpace(scanner.Text())
@@ -90,6 +101,7 @@ func Load() (*Dictionary, error) {
 			// First occurrence wins: the file is ordered most-frequent-first.
 			if _, seen := rank[word]; !seen {
 				rank[word] = i
+				suggestionWords[len(word)] = append(suggestionWords[len(word)], word)
 			}
 			i++
 		}
@@ -98,13 +110,20 @@ func Load() (*Dictionary, error) {
 			return
 		}
 
-		shared = &Dictionary{spellers: spellers, rank: rank}
+		shared = &Dictionary{
+			spellers:        spellers,
+			rank:            rank,
+			suggestionWords: suggestionWords,
+		}
 	})
 	return shared, loadErr
 }
 
 // spell reports whether any loaded dictionary accepts the exact word.
 func (d *Dictionary) spell(word string) bool {
+	d.spellMu.Lock()
+	defer d.spellMu.Unlock()
+
 	for _, s := range d.spellers {
 		if s.Spell(word) {
 			return true

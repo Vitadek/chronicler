@@ -30,6 +30,10 @@ func TestHTMLToYDocAndBack(t *testing.T) {
 			html: `<p>A <a href="https://google.com">link</a> and <span data-comment="this is a comment">commented text</span>.</p>`,
 		},
 		{
+			name: "Proofread request mark",
+			html: `<p><span data-proofread-request="request-1" data-proofread-note="Check the transition.">A passage</span></p>`,
+		},
+		{
 			name: "Epigraph",
 			html: `<blockquote data-type="epigraph">This is an epigraph</blockquote>`,
 		},

@@ -16,6 +16,7 @@ import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
 import { Chapter, ManuscriptMetadata, ExportSettings, DEFAULT_EXPORT_SETTINGS } from '../types';
 import { fileTimestamp } from './exportFilename';
+import { sanitizeHtmlExportBody } from './exportSanitize';
 
 /**
  * Standard Manuscript Format export.
@@ -730,14 +731,10 @@ export function exportToHtml(
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-  const cleanBody = (html: string) =>
-    html.replace(/<script[\s\S]*?<\/script>/gi, '')
-        .replace(/\son\w+="[^"]*"/gi, '');
-
   const chapterHtml = chapters.map((c) => `
     <section class="chapter">
       <h2 class="chapter-title">${esc(c.title)}</h2>
-      <div class="chapter-body">${cleanBody(c.content)}</div>
+      <div class="chapter-body">${sanitizeHtmlExportBody(c.content)}</div>
     </section>
   `).join('\n');
 

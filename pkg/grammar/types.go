@@ -22,7 +22,6 @@
 //   - "grammar" draws a red squiggle (see ERROR_KINDS in
 //     chronicle/src/lib/Grammar.ts).
 //   - "style" is advisory and renders blue.
-//
 package grammar
 
 // Hit kinds. These strings are a contract with the frontend — see the package
@@ -46,9 +45,9 @@ const maxReplacements = 5
 // JavaScript string), and it matters in practice because Chronicler's smart
 // typography emits curly quotes and em dashes, which are multi-byte in UTF-8.
 type Hit struct {
-	Start int    `json:"start"`
-	End   int    `json:"end"`
-	Kind  string `json:"kind"`
+	Start   int    `json:"start"`
+	End     int    `json:"end"`
+	Kind    string `json:"kind"`
 	Message string `json:"message"`
 	// Always serialized, never null: the Node route emitted `[]` when there
 	// were no candidates and ProofreadView indexes it without a guard.
@@ -59,4 +58,8 @@ type Hit struct {
 	// ever read start/end/kind/message/replacements and are unaffected.
 	RuleID   string `json:"ruleId,omitempty"`
 	Category string `json:"category,omitempty"`
+	// Provider fields are additive provenance for multi-analyzer clients.
+	SourceID    string `json:"sourceId,omitempty"`
+	SourceLabel string `json:"sourceLabel,omitempty"`
+	GroupID     string `json:"groupId,omitempty"`
 }

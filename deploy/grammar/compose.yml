@@ -1,0 +1,47 @@
+services:
+  chronicle:
+    environment:
+      GRAMMAR_PROVIDERS_FILE: /etc/chronicler/grammar-providers.yml
+    volumes:
+      - ./grammar/providers.example.yml:/etc/chronicler/grammar-providers.yml:ro
+
+  languagetool:
+    image: erikvl87/languagetool:latest
+    profiles: [grammar-languagetool, grammar-all]
+    restart: unless-stopped
+    mem_limit: 2g
+    environment:
+      Java_Xms: 256m
+      Java_Xmx: 1536m
+      langtool_languageModel: ${LT_LANGUAGE_MODEL:-}
+    volumes:
+      - ${LT_NGRAMS_DIR:-./grammar/ngrams}:/ngrams:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8010/v2/languages"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  harper:
+    image: ${HARPER_ADAPTER_IMAGE:-forgejo.lan/protoman/chronicler-grammar-harper:2.7.0-1}
+    build: ../adapters/harper
+    profiles: [grammar-harper, grammar-all]
+    restart: unless-stopped
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  proselint:
+    image: ${PROSELINT_ADAPTER_IMAGE:-forgejo.lan/protoman/chronicler-grammar-proselint:0.16.0-1}
+    build: ../adapters/proselint
+    profiles: [grammar-proselint, grammar-all]
+    restart: unless-stopped
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 12

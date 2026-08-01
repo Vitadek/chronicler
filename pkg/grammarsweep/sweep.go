@@ -17,7 +17,7 @@ import (
 	"chronicle-server/pkg/config"
 	"chronicle-server/pkg/db"
 	"chronicle-server/pkg/grammar"
-	"chronicle-server/pkg/languagetool"
+	"chronicle-server/pkg/grammarproviders"
 )
 
 // tickInterval is how often we check whether it's time to sweep.
@@ -29,12 +29,11 @@ const tickInterval = 1 * time.Minute
 const perParagraphDelay = 200 * time.Millisecond
 
 type Sweeper struct {
-	cfg      *config.Config
-	database *sql.DB
-	dict     *grammar.Dictionary
-	lt       *languagetool.Client
-	ltProber *languagetool.Prober
-	stopChan chan struct{}
+	cfg       *config.Config
+	database  *sql.DB
+	dict      *grammar.Dictionary
+	providers *grammarproviders.Registry
+	stopChan  chan struct{}
 
 	// idleMs and sleep are overridden in tests so the gating logic can be
 	// exercised without real wall-clock waits or the process-global
@@ -51,16 +50,14 @@ func NewSweeper(cfg *config.Config, database *sql.DB) (*Sweeper, error) {
 	if err != nil {
 		return nil, err
 	}
-	lt := languagetool.New(cfg)
 	return &Sweeper{
-		cfg:      cfg,
-		database: database,
-		dict:     dict,
-		lt:       lt,
-		ltProber: languagetool.NewProber(lt),
-		stopChan: make(chan struct{}),
-		idleMs:   activity.MillisSinceLastRequest,
-		sleep:    time.Sleep,
+		cfg:       cfg,
+		database:  database,
+		dict:      dict,
+		providers: grammarproviders.New(cfg, dict),
+		stopChan:  make(chan struct{}),
+		idleMs:    activity.MillisSinceLastRequest,
+		sleep:     time.Sleep,
 	}, nil
 }
 
@@ -119,12 +116,17 @@ func (s *Sweeper) checkParagraph(text string) {
 		return s.dict.Check(text), nil
 	})
 
-	if s.lt == nil || !s.ltProber.Available() {
+	if s.providers == nil {
 		return
 	}
-	_, _ = grammar.CheckCached(s.database, text, grammar.EngineLanguagetool, func() ([]grammar.Hit, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		return s.lt.Check(ctx, text)
-	})
+	for _, provider := range s.providers.BackgroundProviders() {
+		provider := provider
+		meta := provider.Metadata()
+		cacheKey := "provider:" + meta.ID + ":" + provider.Fingerprint("standard")
+		_, _ = grammar.CheckCached(s.database, text, cacheKey, func() ([]grammar.Hit, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			return provider.Check(ctx, text, "standard")
+		})
+	}
 }

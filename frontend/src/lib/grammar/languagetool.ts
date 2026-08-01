@@ -26,6 +26,39 @@ export interface GrammarHit {
   /** Populated only by the optional LanguageTool engine; absent for native hits. */
   ruleId?: string;
   category?: string;
+  sourceId?: string;
+  sourceLabel?: string;
+  groupId?: string;
+}
+
+export interface GrammarProvider {
+  id: string;
+  label: string;
+  adapter: string;
+  dataBoundary: 'local' | 'cloud';
+  modes: ('standard' | 'picky')[];
+  defaultEnabled: boolean;
+  allowBackground: boolean;
+  available: boolean;
+  error?: string;
+}
+
+export interface GrammarProviderRun {
+  id: string;
+  status: 'ok' | 'unavailable' | 'invalid' | 'timeout' | 'rate_limited';
+  durationMs: number;
+  fromCache?: boolean;
+  error?: string;
+}
+
+export interface GrammarProviderSelection {
+  id: string;
+  mode?: EnhancedGrammarLevel;
+}
+
+export interface GrammarProviderResult {
+  hits: GrammarHit[];
+  providers: GrammarProviderRun[];
 }
 
 let endpointBase = '';
@@ -60,7 +93,9 @@ export async function loadGrammarEngine(): Promise<void> {
  * timeout, sidecar cold/restarting) from a genuinely clean paragraph: `null`
  * means "unknown, try again later" and must never be cached as "no issues".
  */
-export async function lintTextOrNull(text: string, opts?: { engine?: 'native' | 'languagetool' }): Promise<GrammarHit[] | null> {
+export type EnhancedGrammarLevel = 'standard' | 'picky';
+
+export async function lintTextOrNull(text: string, opts?: { engine?: 'native' | 'languagetool'; level?: EnhancedGrammarLevel }): Promise<GrammarHit[] | null> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   const token = bearer();
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -68,7 +103,7 @@ export async function lintTextOrNull(text: string, opts?: { engine?: 'native' | 
     const res = await fetch(`${endpointBase}/api/grammar/check`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ text, ...(opts?.engine ? { engine: opts.engine } : {}) }),
+      body: JSON.stringify({ text, ...(opts?.engine ? { engine: opts.engine } : {}), ...(opts?.level ? { level: opts.level } : {}) }),
     });
     if (!res.ok) return null;
     const data = (await res.json()) as { hits?: GrammarHit[] };
@@ -85,8 +120,26 @@ export async function lintTextOrNull(text: string, opts?: { engine?: 'native' | 
  * that need to distinguish failure from "no issues" (Grammar.ts's cache)
  * should use `lintTextOrNull` instead.
  */
-export async function lintText(text: string, opts?: { engine?: 'native' | 'languagetool' }): Promise<GrammarHit[]> {
+export async function lintText(text: string, opts?: { engine?: 'native' | 'languagetool'; level?: EnhancedGrammarLevel }): Promise<GrammarHit[]> {
   return (await lintTextOrNull(text, opts)) ?? [];
+}
+
+export async function lintWithProviders(text: string, providers: GrammarProviderSelection[]): Promise<GrammarProviderResult> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const token = bearer();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  try {
+    const res = await fetch(`${endpointBase}/api/grammar/check`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ text, providers }),
+    });
+    if (!res.ok) return { hits: [], providers: providers.map(({ id }) => ({ id, status: 'unavailable', durationMs: 0 })) };
+    const data = (await res.json()) as Partial<GrammarProviderResult>;
+    return { hits: data.hits ?? [], providers: data.providers ?? [] };
+  } catch {
+    return { hits: [], providers: providers.map(({ id }) => ({ id, status: 'unavailable', durationMs: 0 })) };
+  }
 }
 
 interface GrammarCapabilities {
@@ -104,5 +157,19 @@ export async function fetchGrammarCapabilities(): Promise<GrammarCapabilities> {
     return (await res.json()) as GrammarCapabilities;
   } catch {
     return { languagetool: { available: false } };
+  }
+}
+
+export async function fetchGrammarProviders(): Promise<GrammarProvider[]> {
+  const headers: Record<string, string> = {};
+  const token = bearer();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  try {
+    const res = await fetch(`${endpointBase}/api/grammar/providers`, { headers });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { providers?: GrammarProvider[] };
+    return data.providers ?? [];
+  } catch {
+    return [];
   }
 }

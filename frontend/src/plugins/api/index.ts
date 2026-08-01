@@ -76,7 +76,9 @@ export interface PluginStateApi<S = Record<string, unknown>> {
   get(): S;
   /** Merge-free replace; persisted to the server (debounced by the host). */
   set(next: S): void;
-  /** Per-manuscript variant — keyed by the open manuscript, not global. */
+  /** Per-manuscript variant — keyed by the bound/open manuscript, not global.
+   *  Outside a manuscript context `getForManuscript` returns an empty object and
+   *  `setForManuscript` is rejected rather than falling through to global state. */
   getForManuscript(): S;
   setForManuscript(next: S): void;
 }
@@ -145,9 +147,16 @@ export interface PluginServices {
      * sidecar is unreachable — callers don't need their own fallback.
      * Currently used only by chronicle-plugin-proofreader.
      */
-    lintEnhanced(text: string): Promise<{ start: number; end: number; kind: string; message: string; replacements?: string[]; ruleId?: string; category?: string }[]>;
+    lintEnhanced(text: string, opts?: { level?: 'standard' | 'picky' }): Promise<{ start: number; end: number; kind: string; message: string; replacements?: string[]; ruleId?: string; category?: string }[]>;
     /** Whether the optional LanguageTool sidecar is currently reachable. */
     enhancedAvailable(): Promise<boolean>;
+    /** Deployment-managed analyzers safe for the writer to select. */
+    providers(): Promise<{ id: string; label: string; adapter: string; dataBoundary: 'local' | 'cloud'; modes: ('standard' | 'picky')[]; defaultEnabled: boolean; available: boolean; error?: string }[]>;
+    /** Run exactly the selected analyzers and retain source provenance. */
+    lintProviders(text: string, providers: { id: string; mode?: 'standard' | 'picky' }[]): Promise<{
+      hits: { start: number; end: number; kind: string; message: string; replacements?: string[]; ruleId?: string; category?: string; sourceId?: string; sourceLabel?: string; groupId?: string }[];
+      providers: { id: string; status: string; durationMs: number; fromCache?: boolean; error?: string }[];
+    }>;
   };
   /** The user's synced settings store (survives updates + follows devices). */
   settings: {

@@ -27,13 +27,13 @@ func HTMLToYDoc(htmlStr string) (*crdt.Doc, error) {
 
 	// Resolve the fragment outside of Transaction to avoid deadlock
 	fragment := doc.GetXmlFragment("default")
-	
+
 	// We start the transaction to build the document.
 	var buildErr error
 	doc.Transact(func(txn *crdt.Transaction) {
 		// Find the body or the main nodes
 		nodesToProcess := findHTMLBodyOrRoot(rootNode)
-		
+
 		idx := 0
 		for _, node := range nodesToProcess {
 			err := parseBlockNode(txn, node, fragment, &idx)
@@ -147,7 +147,7 @@ func parseBlockNode(txn *crdt.Transaction, n *hparser.Node, parentFragment *crdt
 	if nodeName == "bulletList" || nodeName == "orderedList" || nodeName == "listItem" || nodeName == "blockquote" {
 		parentFragment.InsertElement(txn, *idx, elem)
 		*idx++
-		
+
 		childIdx := 0
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			if c.Type == hparser.ElementNode {
@@ -206,11 +206,24 @@ func parseBlockNode(txn *crdt.Transaction, n *hparser.Node, parentFragment *crdt
 			case "code":
 				nextAttrs["code"] = true
 			case "span":
+				requestID := ""
+				requestNote := ""
 				for _, a := range curr.Attr {
-					if a.Key == "data-comment" {
+					switch a.Key {
+					case "data-comment":
 						nextAttrs["comment"] = a.Val
-					} else if a.Key == "data-audio-token" {
+					case "data-audio-token":
 						nextAttrs["audio"] = a.Val
+					case "data-proofread-request":
+						requestID = a.Val
+					case "data-proofread-note":
+						requestNote = a.Val
+					}
+				}
+				if requestID != "" {
+					nextAttrs["proofreadRequest"] = map[string]any{
+						"requestId": requestID,
+						"note":      requestNote,
 					}
 				}
 			case "a":
@@ -245,14 +258,15 @@ func parseBlockNode(txn *crdt.Transaction, n *hparser.Node, parentFragment *crdt
 
 func buildInsertAttributes(attrs crdt.Attributes) crdt.Attributes {
 	res := crdt.Attributes{
-		"bold":      nil,
-		"italic":    nil,
-		"underline": nil,
-		"strike":    nil,
-		"code":      nil,
-		"comment":   nil,
-		"audio":     nil,
-		"link":      nil,
+		"bold":             nil,
+		"italic":           nil,
+		"underline":        nil,
+		"strike":           nil,
+		"code":             nil,
+		"comment":          nil,
+		"audio":            nil,
+		"link":             nil,
+		"proofreadRequest": nil,
 	}
 	for k, v := range attrs {
 		res[k] = v
@@ -379,6 +393,25 @@ func renderFormattedText(text string, attrs crdt.Attributes) string {
 	}
 	if audioVal, ok := attrs["audio"].(string); ok {
 		res = fmt.Sprintf(`<span data-audio-token="%s">%s</span>`, html.EscapeString(audioVal), res)
+	}
+	if requestVal, ok := attrs["proofreadRequest"]; ok {
+		requestID := ""
+		requestNote := ""
+		if requestMap, ok := requestVal.(map[string]any); ok {
+			requestID, _ = requestMap["requestId"].(string)
+			requestNote, _ = requestMap["note"].(string)
+		} else if requestMap, ok := requestVal.(crdt.Attributes); ok {
+			requestID, _ = requestMap["requestId"].(string)
+			requestNote, _ = requestMap["note"].(string)
+		}
+
+		if requestID != "" {
+			requestAttrs := fmt.Sprintf(` data-proofread-request="%s"`, html.EscapeString(requestID))
+			if requestNote != "" {
+				requestAttrs += fmt.Sprintf(` data-proofread-note="%s"`, html.EscapeString(requestNote))
+			}
+			res = "<span" + requestAttrs + ">" + res + "</span>"
+		}
 	}
 	if attrs["code"] == true {
 		res = "<code>" + res + "</code>"

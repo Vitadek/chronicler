@@ -1,0 +1,46 @@
+version: 1
+providers:
+  - id: languagetool
+    label: LanguageTool (local)
+    adapter: languagetool
+    endpoint: http://languagetool:8010
+    language: en-US
+    data_boundary: local
+    modes: [standard, picky]
+    default_enabled: true
+    allow_background: true
+    allow_insecure_http: true
+    timeout: 15s
+    concurrency: 2
+
+  - id: harper
+    label: Harper
+    adapter: chronicle-v1
+    endpoint: http://harper:8080
+    data_boundary: local
+    modes: [standard]
+    allow_insecure_http: true
+    timeout: 10s
+    concurrency: 2
+
+  - id: proselint
+    label: proselint
+    adapter: chronicle-v1
+    endpoint: http://proselint:8080
+    data_boundary: local
+    modes: [standard]
+    allow_insecure_http: true
+    timeout: 10s
+    concurrency: 2
+
+  # LanguageTool Cloud example. Secrets must be references, never raw values.
+  # - id: languagetool-cloud
+  #   label: LanguageTool Cloud
+  #   adapter: languagetool
+  #   endpoint: https://api.languagetoolplus.com
+  #   language: en-US
+  #   data_boundary: cloud
+  #   modes: [standard, picky]
+  #   secrets:
+  #     username: file:/run/secrets/languagetool_username
+  #     api_key: file:/run/secrets/languagetool_api_key

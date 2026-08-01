@@ -8,7 +8,7 @@ import type {
   PluginServices,
 } from '../api';
 import { pluginService, type InstalledPlugin } from '../../services/pluginService';
-import { lintText, fetchGrammarCapabilities } from '../../lib/grammar/languagetool';
+import { lintText, lintWithProviders, fetchGrammarCapabilities, fetchGrammarProviders } from '../../lib/grammar/languagetool';
 import { authFetch } from '../../services/authService';
 
 /** A plugin that loaded successfully, with its live contributions. */
@@ -43,8 +43,9 @@ interface PluginHostValue {
   setEnabled: (id: string, enabled: boolean) => Promise<void>;
   /** Report a runtime failure (used by PluginBoundary). */
   reportError: (id: string, message: string) => void;
-  /** Build the context a contribution runs with. */
-  makeContext: (pluginId: string) => PluginContext;
+  /** Build the context a contribution runs with. A routed full-page view binds
+   *  its target manuscript explicitly because the Library has no live editor. */
+  makeContext: (pluginId: string, manuscriptIdOverride?: string | null) => PluginContext;
   /** App publishes its live editor/manuscript values here. */
   publishRuntime: (runtime: PluginRuntime) => void;
   /** Full-page view routing (a plugin's `views` slot). */
@@ -191,8 +192,10 @@ export const PluginHost: React.FC<{ children: React.ReactNode }> = ({ children }
     },
     grammar: {
       lint: (text: string) => lintText(text),
-      lintEnhanced: (text: string) => lintText(text, { engine: 'languagetool' }),
+      lintEnhanced: (text: string, opts?: { level?: 'standard' | 'picky' }) => lintText(text, { engine: 'languagetool', level: opts?.level }),
       enhancedAvailable: () => fetchGrammarCapabilities().then((c) => c.languagetool.available),
+      providers: () => fetchGrammarProviders(),
+      lintProviders: (text, providers) => lintWithProviders(text, providers),
     },
     settings: {
       get: (key: string) => localStorage.getItem(`chronicle_plugin_${key}`),
@@ -205,13 +208,15 @@ export const PluginHost: React.FC<{ children: React.ReactNode }> = ({ children }
     },
   }), []);
 
-  const makeContext = useCallback((pluginId: string): PluginContext => {
+  const makeContext = useCallback((pluginId: string, manuscriptIdOverride?: string | null): PluginContext => {
     const persist = (next: unknown, scope: string | null) => {
       void pluginService.setState(pluginId, next, scope).catch((e) => reportError(pluginId, String(e)));
     };
+    const manuscriptScope = () =>
+      manuscriptIdOverride !== undefined ? manuscriptIdOverride : liveRef.current.manuscriptId;
     return {
       get manuscriptId() {
-        return liveRef.current.manuscriptId;
+        return manuscriptScope();
       },
       get editor() {
         return liveRef.current.editor;
@@ -223,11 +228,16 @@ export const PluginHost: React.FC<{ children: React.ReactNode }> = ({ children }
           persist(next, null);
         },
         getForManuscript: () => {
-          const m = liveRef.current.manuscriptId;
+          const m = manuscriptScope();
+          if (!m) return {};
           return (manuscriptStateRef.current[`${pluginId}:${m}`] ?? {}) as Record<string, unknown>;
         },
         setForManuscript: (next) => {
-          const m = liveRef.current.manuscriptId;
+          const m = manuscriptScope();
+          if (!m) {
+            reportError(pluginId, 'Per-manuscript plugin state requires a manuscript context.');
+            return;
+          }
           manuscriptStateRef.current[`${pluginId}:${m}`] = next;
           persist(next, m);
         },
@@ -246,13 +256,22 @@ export const PluginHost: React.FC<{ children: React.ReactNode }> = ({ children }
       setHostCapabilities(caps);
 
       // Seed the synchronous state mirror from the server records.
+      const nextManuscriptState: Record<string, unknown> = {};
       for (const p of list) {
         try {
           stateRef.current[p.id] = p.state ? JSON.parse(p.state) : {};
         } catch {
           stateRef.current[p.id] = {};
         }
+        for (const [manuscriptId, rawState] of Object.entries(p.manuscriptStates)) {
+          try {
+            nextManuscriptState[`${p.id}:${manuscriptId}`] = rawState ? JSON.parse(rawState) : {};
+          } catch {
+            nextManuscriptState[`${p.id}:${manuscriptId}`] = {};
+          }
+        }
       }
+      manuscriptStateRef.current = nextManuscriptState;
 
       const byId = new Map(list.map((p) => [p.id, p]));
       const results: LoadedPlugin[] = [];

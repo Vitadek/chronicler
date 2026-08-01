@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { EditorContent, ReactRenderer } from '@tiptap/react';
+import { EditorContent, ReactRenderer, type Editor } from '@tiptap/react';
 import { useChronicleEditor, UseChronicleEditorProps } from '../hooks/useChronicleEditor';
 import { FormattingToolbar } from './FormattingToolbar';
 import { CommandPortal } from './CommandPortal';
@@ -111,6 +111,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
   const [wordCountAtWake, setWordCountAtWake] = useState(0);
   const [commentingAt, setCommentingAt] = useState<{ from: number; to: number; text: string } | null>(null);
   const [commentDraft, setCommentDraft] = useState('');
+  const [collabEditor, setCollabEditor] = useState<Editor | null>(null);
 
   const { makeContext, reportError } = usePluginHost();
   const pluginSlashCommands = usePluginSlot('slashCommands');
@@ -359,6 +360,12 @@ export const EditorView: React.FC<EditorViewProps> = ({
     }
   });
 
+  const reportCollabEditor = useCallback((next: Editor | null) => {
+    setCollabEditor(next);
+    onEditorReady?.(next);
+  }, [onEditorReady]);
+  const activeBodyEditor = collabEnabled ? collabEditor : editor;
+
   // Flush on blur too (tab-switch, clicking into the title field, etc.) —
   // unmount-flush alone would leave a debounced edit stuck in memory if the
   // user navigates away without the chapter itself changing.
@@ -575,7 +582,8 @@ export const EditorView: React.FC<EditorViewProps> = ({
                   collabUrl={collabUrl}
                   token={collabToken}
                   className="w-full"
-                  onEditorReady={onEditorReady}
+                  pluginExtensions={pluginExtensions}
+                  onEditorReady={reportCollabEditor}
                 />
               </Suspense>
             ) : (
@@ -594,9 +602,9 @@ export const EditorView: React.FC<EditorViewProps> = ({
             )}
 
             {/* Plugin Layer */}
-            {!collabEnabled && editor && !isTitlePage && (
+            {activeBodyEditor && !isTitlePage && (
               <>
-                <SelectionActionsHost editor={editor} isDarkMode={isDarkMode} />
+                <SelectionActionsHost editor={activeBodyEditor} isDarkMode={isDarkMode} />
                 <CompanionHost />
               </>
             )}

@@ -20,9 +20,11 @@ import (
 
 // Client talks to a self-hosted LanguageTool's HTTP API (POST /v2/check).
 type Client struct {
-	baseURL string
-	lang    string
-	http    *http.Client
+	baseURL  string
+	lang     string
+	username string
+	apiKey   string
+	http     *http.Client
 }
 
 // New returns nil when LANGUAGETOOL_URL isn't configured. Callers must
@@ -31,12 +33,28 @@ func New(cfg *config.Config) *Client {
 	if cfg.Grammar.LanguagetoolUrl == "" {
 		return nil
 	}
+	return NewAt(cfg.Grammar.LanguagetoolUrl, cfg.Grammar.LanguagetoolLang, "", "", 10*time.Second)
+}
+
+// NewAt creates a client for either a self-hosted or hosted LanguageTool API.
+// Credentials remain server-side and are sent only when both values exist.
+func NewAt(baseURL, lang, username, apiKey string, timeout time.Duration) *Client {
+	if strings.TrimSpace(baseURL) == "" {
+		return nil
+	}
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
 	return &Client{
-		baseURL: cfg.Grammar.LanguagetoolUrl,
-		lang:    cfg.Grammar.LanguagetoolLang,
-		http:    &http.Client{Timeout: 10 * time.Second},
+		baseURL:  strings.TrimSuffix(baseURL, "/"),
+		lang:     lang,
+		username: username,
+		apiKey:   apiKey,
+		http:     &http.Client{Timeout: timeout},
 	}
 }
+
+func (c *Client) BaseURL() string { return c.baseURL }
 
 type ltMatch struct {
 	Offset  int    `json:"offset"`
@@ -58,13 +76,22 @@ type ltCheckResponse struct {
 	Matches []ltMatch `json:"matches"`
 }
 
-// Check lints text via the sidecar. Callers should treat any returned error
-// as "engine unavailable right now" and fall back to the native checker
-// rather than surfacing it to the writer — see pkg/api/grammar.go postCheck.
-func (c *Client) Check(ctx context.Context, text string) ([]grammar.Hit, error) {
+// Check lints text with the requested LanguageTool level. "picky" enables
+// LanguageTool's additional style rules; any other value uses its normal
+// level. Keeping the choice server-side means plugins never talk to a remote
+// checker directly or need to know the sidecar URL. Callers should treat any
+// error as "engine unavailable right now" and fall back to the native checker.
+func (c *Client) Check(ctx context.Context, text, level string) ([]grammar.Hit, error) {
 	form := url.Values{}
 	form.Set("language", c.lang)
 	form.Set("text", text)
+	if c.username != "" && c.apiKey != "" {
+		form.Set("username", c.username)
+		form.Set("apiKey", c.apiKey)
+	}
+	if level == "picky" {
+		form.Set("level", "picky")
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v2/check", strings.NewReader(form.Encode()))
 	if err != nil {

@@ -90,6 +90,16 @@ disaster recovery, not the primary store.
 | `NEXTCLOUD_MIRROR` | — | — | — | **Retired.** Boot fails with an explicit error if set. Migrate to `STORAGE_REPLICA=nextcloud`. |
 | `NEXTCLOUD_MIRROR_ROOT` | — | — | — | **Retired.** Same as above. |
 
+## Grammar providers
+
+| Var | Default | Required when | Secret | Description |
+|---|---|---|---|---|
+| `LANGUAGETOOL_URL` | `""` | — | no | Legacy single-provider LanguageTool base URL. Prefer `GRAMMAR_PROVIDERS_FILE` for new deployments. |
+| `LANGUAGETOOL_LANG` | `en-US` | — | no | Language used by the legacy LanguageTool connection. |
+| `GRAMMAR_PROVIDERS_FILE` | `""` | — | no | Versioned YAML registry for LanguageTool and Chronicle-v1 adapters. |
+| `GRAMMAR_BACKGROUND_SWEEP` | `false` | — | no | Warm native and explicitly permitted local-provider caches while Chronicle is idle. Cloud providers remain off unless their registry entry opts in. |
+| `GRAMMAR_SWEEP_IDLE_THRESHOLD_MS` | `180000` | — | no | Required period without real traffic before a cache sweep starts. |
+
 ### `STORAGE_REPLICA=s3`
 
 | Var | Default | Required when | Secret | Description |

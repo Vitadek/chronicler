@@ -13,6 +13,7 @@ import (
 	"chronicle-server/pkg/collab"
 	"chronicle-server/pkg/config"
 	"chronicle-server/pkg/db"
+	"chronicle-server/pkg/grammarproviders"
 	"chronicle-server/pkg/grammarsweep"
 	"chronicle-server/pkg/hugopublish"
 	"chronicle-server/pkg/plugins"
@@ -24,6 +25,13 @@ func main() {
 	if err != nil {
 		fmt.Printf("Fatal configuration error: %v\n", err)
 		os.Exit(1)
+	}
+
+	if len(os.Args) > 1 && os.Args[1] == "providers" {
+		handled, code := grammarproviders.RunCLI(cfg, os.Args[2:])
+		if handled {
+			os.Exit(code)
+		}
 	}
 
 	// Apply staged backup import swap if pending

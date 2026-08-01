@@ -41,6 +41,7 @@ const state = await pluginService.list();
 const proofreader = state.plugins[0];
 
 assert.deepEqual(state.shadowedCore, []);
+assert.deepEqual(proofreader.manuscriptStates, {});
 assert.deepEqual(proofreader.provides, []);
 assert.deepEqual(proofreader.wants, []);
 assert.deepEqual(proofreader.conflicts, []);
@@ -52,4 +53,17 @@ assert.doesNotThrow(() => {
   proofreader.status.conflictsWith.map((item) => item.pluginId);
 });
 
-console.log('Nullable legacy Proofreader collections normalize before Settings renders.');
+const scopedPayload = structuredClone(legacyProofreaderPayload) as typeof legacyProofreaderPayload & {
+  plugins: Array<(typeof legacyProofreaderPayload.plugins)[number] & { manuscriptStates?: Record<string, string> }>;
+};
+scopedPayload.plugins[0].manuscriptStates = {
+  'book-a': '{"dismissed":["request-a"]}',
+};
+(globalThis as any).fetch = async () => new Response(JSON.stringify(scopedPayload), { status: 200 });
+
+const scopedState = await pluginService.list();
+assert.deepEqual(scopedState.plugins[0].manuscriptStates, {
+  'book-a': '{"dismissed":["request-a"]}',
+});
+
+console.log('Legacy plugin payloads normalize and manuscript-scoped state survives hydration.');
