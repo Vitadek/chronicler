@@ -31,6 +31,7 @@ func NewSyncHandler(cfg *config.Config, database *sql.DB) *SyncHandler {
 func (h *SyncHandler) Mount(r chi.Router) {
 	r.Post("/", h.syncV1)
 	r.Post("/v2", h.syncV2)
+	r.Get("/v2/bootstrap", h.syncV2Bootstrap)
 }
 
 // ============================================================================
@@ -1096,4 +1097,32 @@ func (h *SyncHandler) syncV2(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// syncV2Bootstrap lets a newly authenticated browser adopt the current change
+// cursor after its authoritative library/settings reads have completed. It
+// avoids replaying the entire historical change log merely to learn a cursor.
+func (h *SyncHandler) syncV2Bootstrap(w http.ResponseWriter, r *http.Request) {
+	userId := auth.GetUserID(r.Context())
+	if userId == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	epoch, err := db.GetSyncHistoryEpoch(h.database)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Epoch read failed"})
+		return
+	}
+	var cursor int64
+	if err := h.database.QueryRow("SELECT COALESCE(MAX(seq), 0) FROM change_log WHERE user_id = ?", userId).Scan(&cursor); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Cursor read failed"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"epoch": epoch, "cursor": cursor})
 }

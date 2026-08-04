@@ -45,17 +45,7 @@ const HOST_MODULES: Record<string, unknown> = {
   '@chronicle/plugin-api': PluginApi,
 };
 
-// `lucide-react` is deliberately NOT in HOST_MODULES above: it is the
-// entire 1,573-icon set (~700K), so it is only fetched (as its own
-// content-hashed chunk) when a plugin's compiled source actually requires
-// it — see the scan in loadPluginModule. Named here so hostRequire's error
-// message still advertises it as an available host module even before it
-// has been loaded for this session.
-const LUCIDE_MODULE_NAME = 'lucide-react';
-const HOST_MODULE_NAMES = [...Object.keys(HOST_MODULES), LUCIDE_MODULE_NAME];
-
-/** Matches the literal `require("lucide-react")` esbuild emits (see server/lib/pluginBuild.ts). */
-const REQUIRES_LUCIDE = /require\(("|')lucide-react\1\)/;
+const HOST_MODULE_NAMES = Object.keys(HOST_MODULES);
 
 function hostRequire(specifier: string): unknown {
   const mod = HOST_MODULES[specifier];
@@ -106,21 +96,6 @@ export async function fetchPluginModuleCode(pluginId: string): Promise<string> {
  * ENABLED plugins (v1 eagerly imported every installed plugin, enabled or not).
  */
 export async function evaluatePluginModule(pluginId: string, code: string): Promise<ChroniclePlugin> {
-  // Only fetch the ~700K icon set when this plugin's compiled bundle
-  // actually references it. esbuild marks lucide-react external
-  // (server/lib/pluginBuild.ts), so every compiled plugin that imports it
-  // emits a literal `require("lucide-react")` — a plugin that keeps the
-  // `require` reference and calls it later is still covered by this
-  // textual scan. Concurrent evaluatePluginModule calls awaiting the same
-  // dynamic import are harmless: Vite dedupes it.
-  if (!HOST_MODULES[LUCIDE_MODULE_NAME] && REQUIRES_LUCIDE.test(code)) {
-    // Keep the plugin host's deliberately-complete icon namespace out of the
-    // library entry graph. The query gives Rollup a distinct optional module;
-    // core UI imports from `lucide-react` remain normally tree-shaken.
-    // @ts-ignore -- Vite resolves query-suffixed ESM modules at build time.
-    HOST_MODULES[LUCIDE_MODULE_NAME] = await import('lucide-react/dist/esm/lucide-react.js?plugin-host');
-  }
-
   const module: { exports: Record<string, unknown> } = { exports: {} };
   try {
     // eslint-disable-next-line no-new-func

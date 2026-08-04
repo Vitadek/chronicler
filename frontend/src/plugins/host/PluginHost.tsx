@@ -17,6 +17,20 @@ export interface LoadedPlugin {
   plugin: ChroniclePlugin;
 }
 
+function pluginBuildIdentity(info: InstalledPlugin): string {
+  // A source commit is authoritative for git plugins; version/build error keep
+  // local and seeded plugins safe to reconcile as well.
+  return [info.source, info.commit ?? '', info.version, info.buildError ?? ''].join(':');
+}
+
+function deactivatePlugin(plugin: ChroniclePlugin): void {
+  try {
+    plugin.deactivate?.();
+  } catch {
+    // Teardown is best-effort: one broken plugin must not strand the host.
+  }
+}
+
 /** The app values plugins see. Published by App via usePublishPluginRuntime. */
 export interface PluginRuntime {
   manuscriptId: string | null;
@@ -115,6 +129,10 @@ export const PluginHost: React.FC<{ children: React.ReactNode }> = ({ children }
   const [activeView, setActiveView] = useState<PluginHostValue['activeView']>(null);
   const [shadowedCore, setShadowedCore] = useState<Set<string>>(new Set());
   const [hostCapabilities, setHostCapabilities] = useState<string[]>([]);
+  // State updates are asynchronous, while refresh/toggle/unmount need the
+  // actual current instances synchronously to avoid duplicate listeners.
+  const loadedRef = useRef<LoadedPlugin[]>([]);
+  const refreshGenerationRef = useRef(0);
 
   // Live values the plugin context reads at call time — the context object is
   // handed to plugin code that may hold it across renders.
@@ -248,6 +266,8 @@ export const PluginHost: React.FC<{ children: React.ReactNode }> = ({ children }
 
   /** Fetch the installed list, then load ONLY the enabled ones. */
   const refresh = useCallback(async () => {
+    const generation = ++refreshGenerationRef.current;
+    setIsLoading(true);
     try {
       const { plugins: list, shadowedCore: shadowed, hostCapabilities: caps, activationOrder } =
         await pluginService.list();
@@ -276,11 +296,21 @@ export const PluginHost: React.FC<{ children: React.ReactNode }> = ({ children }
       const byId = new Map(list.map((p) => [p.id, p]));
       const results: LoadedPlugin[] = [];
       const nextErrors: Record<string, string> = {};
+      const previousById = new Map(loadedRef.current.map((entry) => [entry.plugin.id, entry]));
+      const retained = new Map<string, LoadedPlugin>();
+      for (const id of activationOrder) {
+        const previous = previousById.get(id);
+        const info = byId.get(id);
+        if (previous && info && pluginBuildIdentity(previous.info) === pluginBuildIdentity(info)) {
+          retained.set(id, { info, plugin: previous.plugin });
+        }
+      }
+      const idsToLoad = activationOrder.filter((id) => !retained.has(id));
 
       // Bundles are independent of each other, so fetch them all at once…
       const modules = new Map<string, ChroniclePlugin>();
       let loader: typeof import('./loader') | null = null;
-      if (activationOrder.length > 0) {
+      if (idsToLoad.length > 0) {
         // Kick off every plugin bundle's NETWORK fetch immediately — in
         // parallel with the './loader' + 'editorExtensions' chunk imports
         // below, not behind them. This calls authFetch directly (not through
@@ -290,7 +320,7 @@ export const PluginHost: React.FC<{ children: React.ReactNode }> = ({ children }
         // fetched (v1 eagerly imported every installed plugin regardless of
         // its toggle).
         const codeFetches = new Map<string, Promise<string>>();
-        for (const id of activationOrder) {
+        for (const id of idsToLoad) {
           codeFetches.set(
             id,
             authFetch(`/api/plugins/${encodeURIComponent(id)}/module.js`).then((res) => {
@@ -310,7 +340,7 @@ export const PluginHost: React.FC<{ children: React.ReactNode }> = ({ children }
         editorSupportRef.current = editorSupport;
 
         await Promise.all(
-          activationOrder.map(async (id) => {
+          idsToLoad.map(async (id) => {
             try {
               const code = await codeFetches.get(id)!;
               modules.set(id, await loader!.evaluatePluginModule(id, code));
@@ -321,9 +351,22 @@ export const PluginHost: React.FC<{ children: React.ReactNode }> = ({ children }
         );
       }
 
+      // Retired builds must release listeners before their replacement starts.
+      for (const previous of loadedRef.current) {
+        const retainedEntry = retained.get(previous.plugin.id);
+        if (!retainedEntry || retainedEntry.plugin !== previous.plugin) {
+          deactivatePlugin(previous.plugin);
+        }
+      }
+
       // …but ACTIVATE in the server's dependency order, sequentially. A plugin
       // that requires (or wants) another must see it already active.
       for (const id of activationOrder) {
+        const retainedEntry = retained.get(id);
+        if (retainedEntry) {
+          results.push(retainedEntry);
+          continue;
+        }
         const plugin = modules.get(id);
         const info = byId.get(id);
         if (!plugin || !info) continue;
@@ -342,6 +385,14 @@ export const PluginHost: React.FC<{ children: React.ReactNode }> = ({ children }
         if (p.buildError) nextErrors[p.id] = p.buildError;
       }
 
+      // A slower earlier refresh must never replace a newer active registry.
+      if (generation !== refreshGenerationRef.current) {
+        for (const { plugin } of results) {
+          if (!retained.has(plugin.id)) deactivatePlugin(plugin);
+        }
+        return;
+      }
+      loadedRef.current = results;
       setLoaded(results);
       setErrors(nextErrors);
     } catch (err) {
@@ -359,13 +410,8 @@ export const PluginHost: React.FC<{ children: React.ReactNode }> = ({ children }
   // Give each plugin a chance to detach listeners when the host unmounts.
   useEffect(() => {
     return () => {
-      for (const { plugin } of loaded) {
-        try {
-          plugin.deactivate?.();
-        } catch {
-          /* a failing teardown must not break unmount */
-        }
-      }
+      for (const { plugin } of loadedRef.current) deactivatePlugin(plugin);
+      loadedRef.current = [];
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -378,13 +424,6 @@ export const PluginHost: React.FC<{ children: React.ReactNode }> = ({ children }
     await pluginService.setEnabled(id, enabled);
 
     if (!enabled) {
-      // Now it's really going: release listeners/timers.
-      const entry = loaded.find((l) => l.plugin.id === id);
-      try {
-        entry?.plugin.deactivate?.();
-      } catch {
-        /* a failing teardown must not break the toggle */
-      }
       // Close its view if it owned the one on screen.
       setActiveView((v) => (v?.pluginId === id ? null : v));
     }
@@ -395,7 +434,7 @@ export const PluginHost: React.FC<{ children: React.ReactNode }> = ({ children }
       return next;
     });
     await refresh();
-  }, [loaded, refresh]);
+  }, [refresh]);
 
   const openView = useCallback((pluginId: string, viewId: string, mId: string | null) => {
     setActiveView({ pluginId, viewId, manuscriptId: mId });

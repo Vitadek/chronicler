@@ -28,7 +28,6 @@ var SharedExternals = []string{
 	"@tiptap/pm/view",
 	"@tiptap/pm/model",
 	"motion/react",
-	"lucide-react",
 	"@chronicle/plugin-api",
 }
 

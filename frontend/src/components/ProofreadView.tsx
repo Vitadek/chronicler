@@ -368,6 +368,20 @@ function ProofreadChapter({
   const scrollRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const lintedRef = useRef(false);
+  // Keep proofread fixes responsive without serializing an entire chapter on
+  // every individual transaction. A chapter switch/remount flushes this.
+  const pendingEditorRef = useRef<ReturnType<typeof useChronicleEditor> | null>(null);
+  const emitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushContent = useCallback(() => {
+    if (emitTimerRef.current) {
+      clearTimeout(emitTimerRef.current);
+      emitTimerRef.current = null;
+    }
+    const pending = pendingEditorRef.current;
+    pendingEditorRef.current = null;
+    if (pending && !pending.isDestroyed) onUpdateContent(pending.getHTML());
+  }, [onUpdateContent]);
+  useEffect(() => () => flushContent(), [flushContent]);
 
   // Proofreading owns its checker explicitly. The general Chronicler editor no
   // longer bundles or runs live grammar checking; this lazy proofread surface
@@ -394,8 +408,10 @@ function ProofreadChapter({
     className: 'novel-editor-content focus:outline-none min-h-[300px]',
     placeholder: ' ',
     pluginExtensions: proofreadExtensions,
-    onUpdate: (html) => {
-      onUpdateContent(html);
+    onUpdate: (updatedEditor) => {
+      pendingEditorRef.current = updatedEditor;
+      if (emitTimerRef.current) clearTimeout(emitTimerRef.current);
+      emitTimerRef.current = setTimeout(flushContent, 280);
       // The Grammar extension re-lints on a debounce after any doc change;
       // reflect that in the UI so a fix visibly "rechecks".
       setRelinting(true);

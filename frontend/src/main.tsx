@@ -39,15 +39,3 @@ createRoot(document.getElementById('root')!).render(
     </AuthGate>
   </StrictMode>,
 );
-
-// Warm the always-needed editor chunks during idle time so opening a
-// manuscript resolves its Suspense boundary instantly instead of starting a
-// ~716K download tree on click. Vite's module registry dedupes these with
-// the later React.lazy() imports in App.tsx.
-const warm = () => {
-  void import('./components/EditorView');
-  void import('./components/Sidebar');
-};
-'requestIdleCallback' in window
-  ? requestIdleCallback(warm, { timeout: 3000 })
-  : setTimeout(warm, 1500);

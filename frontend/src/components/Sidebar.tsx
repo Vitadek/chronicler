@@ -1142,9 +1142,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               <span className="text-[10px] font-bold uppercase tracking-wider mb-1 opacity-60 group-hover:opacity-100">{style.name}</span>
                               <span className="text-sm italic font-serif">{style.label}</span>
                               {(metadata.sceneBreakStyle || 'classic') === style.id && (
-                                <motion.div layoutId="style-check" className="absolute top-1 right-1">
+                                <div className="absolute top-1 right-1">
                                   <Check className="w-2.5 h-2.5 opacity-60" />
-                                </motion.div>
+                                </div>
                               )}
                             </button>
                           ))}

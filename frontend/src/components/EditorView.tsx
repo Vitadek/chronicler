@@ -278,18 +278,9 @@ export const EditorView: React.FC<EditorViewProps> = ({
     },
   }), []);
 
-  // A1 (frontend_optimizations.md): the body editor's onUpdate used to call
-  // onUpdate(title, html) synchronously on every keystroke, round-tripping the
-  // whole chapter through App's ~40-useState root and re-rendering the entire
-  // tree (Sidebar's DOMParser pass, a second getHTML() in the sync effect
-  // below) once per character. Emission is now debounced; the live DOM is
-  // always the source of truth (the editor itself never lags), only the
-  // React/App-state mirror — and therefore autosave — trails by up to
-  // BODY_EMIT_DEBOUNCE_MS. flushBodyEmit is load-bearing: it must run before
-  // this component's content could be attributed to a different chapter, so
-  // it fires on blur and (via the empty-deps cleanup below) on unmount —
-  // chapter switches remount EditorView entirely (App keys it by
-  // currentChapterId), so unmount-flush also covers switches.
+  // The live editor is the source of truth while typing. Serialize its document
+  // only at this debounce boundary — serializing a long ProseMirror document
+  // on every transaction is noticeably expensive on mobile.
   const BODY_EMIT_DEBOUNCE_MS = 280;
   const bodyOnUpdateRef = useRef(onUpdate);
   bodyOnUpdateRef.current = onUpdate;
@@ -301,7 +292,11 @@ export const EditorView: React.FC<EditorViewProps> = ({
   // exact shape the `content` prop will echo back as — lets the sync effect
   // recognize its own echo without a second getHTML() call.
   const lastEmittedContentRef = useRef(content);
-  const pendingBodyHtmlRef = useRef<string | null>(null);
+  const pendingBodyRef = useRef<{
+    editor: Editor;
+    title: string;
+    isTitlePage: boolean | undefined;
+  } | null>(null);
   const bodyEmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const flushBodyEmit = useCallback(() => {
@@ -309,12 +304,16 @@ export const EditorView: React.FC<EditorViewProps> = ({
       clearTimeout(bodyEmitTimerRef.current);
       bodyEmitTimerRef.current = null;
     }
-    if (pendingBodyHtmlRef.current !== null) {
-      const html = pendingBodyHtmlRef.current;
-      pendingBodyHtmlRef.current = null;
+    const pending = pendingBodyRef.current;
+    pendingBodyRef.current = null;
+    if (pending && !pending.editor.isDestroyed) {
+      const html = pending.editor.getHTML();
+      lastEmittedContentRef.current = pending.isTitlePage
+        ? html.replace(/<[^>]*>?/gm, '').trim()
+        : html;
       bodyOnUpdateRef.current(
-        titleRef.current,
-        isTitlePageRef.current ? html.replace(/<[^>]*>?/gm, '').trim() : html,
+        pending.title,
+        lastEmittedContentRef.current,
       );
     }
   }, []);
@@ -323,6 +322,16 @@ export const EditorView: React.FC<EditorViewProps> = ({
   // cleanup fires exactly once, on unmount.
   useEffect(() => () => flushBodyEmit(), [flushBodyEmit]);
 
+  // App reuses this editor between chapters instead of destroying TipTap and
+  // holding a one-second fade. Flush the outgoing snapshot before the content
+  // synchronization effect below loads the incoming chapter.
+  const previousChapterIdRef = useRef(chapterId);
+  useEffect(() => {
+    if (previousChapterIdRef.current === chapterId) return;
+    flushBodyEmit();
+    previousChapterIdRef.current = chapterId;
+  }, [chapterId, flushBodyEmit]);
+
   const titleEditor = useChronicleEditor({
     content: `<h1>${title}</h1>`,
     placeholder: isTitlePage ? 'Manuscript Title' : 'Chapter Title',
@@ -330,8 +339,8 @@ export const EditorView: React.FC<EditorViewProps> = ({
     // The title is always exactly one H1: Ctrl+A + Delete empties it instead of
     // demoting it to a paragraph, and Enter can't split it into extra blocks.
     singleLineHeading: true,
-    onUpdate: (html) => {
-      const text = html.replace(/<[^>]*>?/gm, '').trim();
+    onUpdate: (titleEditor) => {
+      const text = titleEditor.getText().trim();
       onUpdate(text, content);
       lastActivityRef.current = Date.now();
     }
@@ -348,9 +357,12 @@ export const EditorView: React.FC<EditorViewProps> = ({
     commandLineOptions,
     // Plugin extensions apply to the prose, not the title field.
     pluginExtensions: isTitlePage ? undefined : pluginExtensions,
-    onUpdate: (html) => {
-      lastEmittedContentRef.current = isTitlePage ? html.replace(/<[^>]*>?/gm, '').trim() : html;
-      pendingBodyHtmlRef.current = html;
+    onUpdate: (updatedEditor) => {
+      pendingBodyRef.current = {
+        editor: updatedEditor,
+        title: titleRef.current,
+        isTitlePage: isTitlePageRef.current,
+      };
       if (bodyEmitTimerRef.current) clearTimeout(bodyEmitTimerRef.current);
       bodyEmitTimerRef.current = setTimeout(() => {
         bodyEmitTimerRef.current = null;

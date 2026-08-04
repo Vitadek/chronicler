@@ -4,11 +4,14 @@ import Focus from '@tiptap/extension-focus';
 import BubbleMenuExtension from '@tiptap/extension-bubble-menu';
 import { CommandLine } from '../lib/CommandLine';
 import { buildCoreExtensions, EDITOR_KEYBOARD_ATTRS } from '../lib/editorExtensions';
-import type { AnyExtension } from '@tiptap/core';
+import type { AnyExtension, Editor } from '@tiptap/core';
 
 export interface UseChronicleEditorProps {
   content?: string;
-  onUpdate?: (content: string) => void;
+  /** Receives the live editor rather than serialized HTML. Callers that mirror
+   * content into React can serialize on their own debounce boundary, keeping
+   * whole-document getHTML() work out of the typing transaction. */
+  onUpdate?: (editor: Editor) => void;
   placeholder?: string;
   className?: string;
   commandLineOptions?: any;
@@ -88,7 +91,7 @@ export function useChronicleEditor({
     extensions,
     content: initialContent,
     onUpdate: ({ editor }) => {
-      onUpdate?.(editor.getHTML());
+      onUpdate?.(editor);
     },
     editorProps,
   });

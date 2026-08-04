@@ -8,6 +8,7 @@ import { cn } from '../lib/utils';
 import { formatWordCount } from '../lib/wordCount';
 import { ImportDialog } from './ImportDialog';
 import { usePluginHost, usePluginSlot } from '../plugins/host/PluginHost';
+import { warmEditorShell } from '../lib/editorWarmup';
 
 interface LibraryViewProps {
   onSelectManuscript: (id: string) => void;
@@ -238,9 +239,12 @@ export function LibraryView({ onSelectManuscript, onCreateNew, onImportManuscrip
               return (
                 <m.div
                   key={book.id}
-                  layoutId={book.id}
+                  onPointerEnter={() => { void warmEditorShell(); }}
+                  onFocusCapture={() => { void warmEditorShell(); }}
+                  onTouchStart={() => { void warmEditorShell(); }}
                   onClick={() => {
                     if (isConfirming) return;
+                    void warmEditorShell();
                     onSelectManuscript(book.id);
                   }}
                   className={cn(

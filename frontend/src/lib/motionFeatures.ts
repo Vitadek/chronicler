@@ -1,8 +1,7 @@
 // Async feature bundle for LazyMotion (App.tsx). Split into its own module so
-// `import('./motionFeatures')` fetches the ~130K motion runtime in a lazy
-// chunk instead of the eager entry chunk. domMax (not domAnimation) because
-// LibraryView's manuscript cards use layoutId shared-layout projection, which
-// domAnimation doesn't include.
-import { domMax } from 'motion/react';
+// `import('./motionFeatures')` fetches the Motion runtime in a lazy chunk
+// instead of the eager entry chunk. No core transition relies on layout
+// projection, so the smaller domAnimation feature set is sufficient.
+import { domAnimation } from 'motion/react';
 
-export default domMax;
+export default domAnimation;

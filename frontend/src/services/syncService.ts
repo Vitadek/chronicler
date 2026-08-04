@@ -85,6 +85,25 @@ export async function syncOnce(): Promise<SyncResponse | null> {
   const cursor = Number.isSafeInteger(stored) && stored >= 0 ? stored : 0;
   const storedEpoch = localStorage.getItem(historyKey);
   const epoch = validEpoch(storedEpoch) ? storedEpoch : undefined;
+  // A fresh browser already loads authoritative library/settings/plugin data
+  // through their own endpoints. Adopt the current cursor instead of replaying
+  // the complete change log and immediately repainting that same library.
+  if (!epoch) {
+    try {
+      const bootstrap = await authFetch('/api/sync/v2/bootstrap');
+      if (bootstrap.ok) {
+        const body = await bootstrap.json() as { epoch?: unknown; cursor?: unknown };
+        if (validEpoch(body.epoch) && Number.isSafeInteger(body.cursor) && (body.cursor as number) >= 0) {
+          localStorage.setItem(key, String(body.cursor));
+          localStorage.setItem(historyKey, body.epoch);
+          return null;
+        }
+      }
+    } catch {
+      // Preserve the v2 replay path below for an offline session or an older
+      // server that does not yet provide the bootstrap endpoint.
+    }
+  }
   // A cursor learned before epoch-aware sync cannot be assigned safely to the
   // current history. Adopt the first epoch through a bounded replay from zero.
   const requestCursor = epoch ? cursor : 0;

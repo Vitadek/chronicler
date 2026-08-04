@@ -6,7 +6,7 @@ import { ManuscriptServiceError, manuscriptService } from './services/manuscript
 import { startSync } from './services/syncService';
 import { cn } from './lib/utils';
 import { authService } from './services/authService';
-import { LazyMotion, m } from 'motion/react';
+import { LazyMotion } from 'motion/react';
 
 // Lazy feature bundle for LazyMotion — keeps the ~130K motion runtime out of
 // the eager entry chunk. domMax (not domAnimation) because LibraryView's
@@ -898,13 +898,7 @@ function AppInner() {
         />
         
         <main className="flex-1">
-          <m.div
-            key={currentChapterId}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 1.0 }}
-            className="relative"
-          >
+          <div className="relative">
             <EditorView 
               isDarkMode={isDarkMode} 
               onToggleTheme={() => setIsDarkMode(!isDarkMode)} 
@@ -925,7 +919,7 @@ function AppInner() {
               onUpdate={handleUpdateChapterContent}
               onEditorReady={setActiveEditor}
             />
-          </m.div>
+          </div>
         </main>
 
         {isSidebarOpen && (

@@ -1,4 +1,4 @@
-import{J as u}from"./jszip.min-CNQpGg6c.js";import{a as v}from"./FileSaver.min-DdqlPtym.js";import{s as b,f as w}from"./exportSanitize-CklZIBL6.js";import{b6 as $}from"./index-DTwEywiE.js";import"./jszip.min-DSv_l3kQ.js";function T(e,t){const i=r=>r.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&apos;"),o=i(e),n=i(t);return`<?xml version="1.0" encoding="UTF-8"?>
+import{J as u}from"./jszip.min-DndVDAcI.js";import{a as v}from"./FileSaver.min-ZLU22xt5.js";import{s as b,f as w}from"./exportSanitize-CklZIBL6.js";import{b1 as $}from"./index-Cx86ZJP0.js";import"./jszip.min-BfFVIawh.js";function T(e,t){const i=r=>r.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&apos;"),o=i(e),n=i(t);return`<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 2400" width="1600" height="2400">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
