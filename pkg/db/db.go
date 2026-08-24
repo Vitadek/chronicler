@@ -173,6 +173,10 @@ func GC() {
 	now := time.Now().UnixNano() / int64(time.Millisecond)
 	_, _ = DB.Exec("DELETE FROM sessions WHERE expires_at < ?", now)
 	_, _ = DB.Exec("DELETE FROM kv WHERE expires_at IS NOT NULL AND expires_at < ?", now)
+	// Record query planner statistics to optimize index lookups as tables grow
+	_, _ = DB.Exec("PRAGMA optimize")
+	// Passive WAL checkpointing to bound WAL journal sizes without blocking readers or writers
+	_, _ = DB.Exec("PRAGMA wal_checkpoint(PASSIVE)")
 }
 
 func StartGCLoop() {

@@ -146,184 +146,233 @@ func (h *SyncHandler) syncV1(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	// 1. Process Manuscripts Push
-	for _, m := range req.Push.Manuscripts {
-		var existingLastModified int64
-		var existingDeletedAt sql.NullInt64
-		var existingRevision int
-
-		errGet := tx.QueryRow("SELECT last_modified, deleted_at, revision FROM manuscripts WHERE user_id = ? AND id = ?", userId, m.ID).Scan(&existingLastModified, &existingDeletedAt, &existingRevision)
-		if errGet == nil && existingDeletedAt.Valid {
-			// Retained tombstone is terminal: ignore resurrection attempts
-			continue
+	if len(req.Push.Manuscripts) > 0 {
+		stmtGetMs, errStmt := tx.Prepare("SELECT last_modified, deleted_at, revision FROM manuscripts WHERE user_id = ? AND id = ?")
+		if errStmt != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": errStmt.Error()})
+			return
 		}
+		defer stmtGetMs.Close()
 
-		if errGet == sql.ErrNoRows || m.LastModified > existingLastModified {
-			var deletedAtVal interface{} = nil
-			data := m.Data
-			if m.Deleted {
-				deletedAtVal = m.LastModified
-				data = fmt.Sprintf(`{"id":"%s"}`, m.ID)
+		stmtUpMs, errStmt := tx.Prepare(`
+			INSERT INTO manuscripts (user_id, id, data, last_modified, deleted_at, revision)
+			VALUES (?, ?, ?, ?, ?, 1)
+			ON CONFLICT(user_id, id) DO UPDATE SET
+				data          = excluded.data,
+				last_modified = excluded.last_modified,
+				deleted_at    = excluded.deleted_at,
+				revision      = manuscripts.revision + 1
+		`)
+		if errStmt != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": errStmt.Error()})
+			return
+		}
+		defer stmtUpMs.Close()
+
+		for _, m := range req.Push.Manuscripts {
+			var existingLastModified int64
+			var existingDeletedAt sql.NullInt64
+			var existingRevision int
+
+			errGet := stmtGetMs.QueryRow(userId, m.ID).Scan(&existingLastModified, &existingDeletedAt, &existingRevision)
+			if errGet == nil && existingDeletedAt.Valid {
+				// Retained tombstone is terminal: ignore resurrection attempts
+				continue
 			}
 
-			_, errUp := tx.Exec(`
-				INSERT INTO manuscripts (user_id, id, data, last_modified, deleted_at, revision)
-				VALUES (?, ?, ?, ?, ?, 1)
-				ON CONFLICT(user_id, id) DO UPDATE SET
-					data          = excluded.data,
-					last_modified = excluded.last_modified,
-					deleted_at    = excluded.deleted_at,
-					revision      = manuscripts.revision + 1
-			`, userId, m.ID, data, m.LastModified, deletedAtVal)
-			if errUp != nil {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]string{"error": errUp.Error()})
-				return
-			}
+			if errGet == sql.ErrNoRows || m.LastModified > existingLastModified {
+				var deletedAtVal interface{} = nil
+				data := m.Data
+				if m.Deleted {
+					deletedAtVal = m.LastModified
+					data = fmt.Sprintf(`{"id":"%s"}`, m.ID)
+				}
 
-			newRevision := existingRevision + 1
-			operation := "upsert"
-			if m.Deleted {
-				operation = "delete"
-			}
-			_, _ = db.RecordChange(tx, userId, "manuscript", nil, m.ID, operation, newRevision, m.LastModified)
+				_, errUp := stmtUpMs.Exec(userId, m.ID, data, m.LastModified, deletedAtVal)
+				if errUp != nil {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{"error": errUp.Error()})
+					return
+				}
 
-			if m.Deleted {
-				// Purge collaboration residues
-				scopedPrefix := fmt.Sprintf("%s/%s:", url.QueryEscape(userId), m.ID)
-				_, _ = tx.Exec("DELETE FROM ydocs WHERE substr(name, 1, ?) = ?", len(scopedPrefix), scopedPrefix)
-				legacyPrefix := fmt.Sprintf("%s:", m.ID)
-				_, _ = tx.Exec("DELETE FROM ydocs WHERE substr(name, 1, ?) = ?", len(legacyPrefix), legacyPrefix)
-				_, _ = tx.Exec("DELETE FROM chapter_pre_collab WHERE user_id = ? AND manuscript_id = ?", userId, m.ID)
+				newRevision := existingRevision + 1
+				operation := "upsert"
+				if m.Deleted {
+					operation = "delete"
+				}
+				_, _ = db.RecordChange(tx, userId, "manuscript", nil, m.ID, operation, newRevision, m.LastModified)
 
-				// Enqueue manuscript replica tombstone
-				tombData := replica.SerializeManuscriptTombstone(userId, m.ID, m.LastModified, newRevision)
-				_ = replica.EnqueueReplicaPut(tx, fmt.Sprintf("manuscripts/%s/%s/manuscript.json", userId, m.ID), tombData, "application/json")
+				if m.Deleted {
+					// Purge collaboration residues
+					scopedPrefix := fmt.Sprintf("%s/%s:", url.QueryEscape(userId), m.ID)
+					_, _ = tx.Exec("DELETE FROM ydocs WHERE substr(name, 1, ?) = ?", len(scopedPrefix), scopedPrefix)
+					legacyPrefix := fmt.Sprintf("%s:", m.ID)
+					_, _ = tx.Exec("DELETE FROM ydocs WHERE substr(name, 1, ?) = ?", len(legacyPrefix), legacyPrefix)
+					_, _ = tx.Exec("DELETE FROM chapter_pre_collab WHERE user_id = ? AND manuscript_id = ?", userId, m.ID)
 
-				// Tombstone active chapters
-				rows, errCh := tx.Query("SELECT id, revision FROM chapters WHERE user_id = ? AND manuscript_id = ? AND deleted_at IS NULL", userId, m.ID)
-				if errCh == nil {
-					type chTomb struct{ id string; rev int }
-					var chs []chTomb
-					for rows.Next() {
-						var c chTomb
-						if errScan := rows.Scan(&c.id, &c.rev); errScan == nil {
-							chs = append(chs, c)
+					// Enqueue manuscript replica tombstone
+					tombData := replica.SerializeManuscriptTombstone(userId, m.ID, m.LastModified, newRevision)
+					_ = replica.EnqueueReplicaPut(tx, fmt.Sprintf("manuscripts/%s/%s/manuscript.json", userId, m.ID), tombData, "application/json")
+
+					// Tombstone active chapters
+					rows, errCh := tx.Query("SELECT id, revision FROM chapters WHERE user_id = ? AND manuscript_id = ? AND deleted_at IS NULL", userId, m.ID)
+					if errCh == nil {
+						type chTomb struct{ id string; rev int }
+						var chs []chTomb
+						for rows.Next() {
+							var c chTomb
+							if errScan := rows.Scan(&c.id, &c.rev); errScan == nil {
+								chs = append(chs, c)
+							}
+						}
+						rows.Close()
+
+						for _, ch := range chs {
+							chRev := ch.rev + 1
+							_, _ = tx.Exec(`
+								UPDATE chapters
+								   SET title = NULL, content = NULL, position = NULL,
+								       last_modified = ?, deleted_at = ?, revision = ?
+								 WHERE user_id = ? AND manuscript_id = ? AND id = ?
+							`, m.LastModified, m.LastModified, chRev, userId, m.ID, ch.id)
+
+							_, _ = db.RecordChange(tx, userId, "chapter", &m.ID, ch.id, "delete", chRev, m.LastModified)
+
+							chTombData := replica.SerializeChapterTombstone(userId, m.ID, ch.id, m.LastModified, chRev)
+							_ = replica.EnqueueReplicaPut(tx, fmt.Sprintf("manuscripts/%s/%s/chapters/%s.html", userId, m.ID, ch.id), chTombData, "text/html; charset=utf-8")
 						}
 					}
-					rows.Close()
-
-					for _, ch := range chs {
-						chRev := ch.rev + 1
-						_, _ = tx.Exec(`
-							UPDATE chapters
-							   SET title = NULL, content = NULL, position = NULL,
-							       last_modified = ?, deleted_at = ?, revision = ?
-							 WHERE user_id = ? AND manuscript_id = ? AND id = ?
-						`, m.LastModified, m.LastModified, chRev, userId, m.ID, ch.id)
-
-						_, _ = db.RecordChange(tx, userId, "chapter", &m.ID, ch.id, "delete", chRev, m.LastModified)
-
-						chTombData := replica.SerializeChapterTombstone(userId, m.ID, ch.id, m.LastModified, chRev)
-						_ = replica.EnqueueReplicaPut(tx, fmt.Sprintf("manuscripts/%s/%s/chapters/%s.html", userId, m.ID, ch.id), chTombData, "text/html; charset=utf-8")
-					}
+				} else {
+					// Enqueue manuscript replica put
+					replData, _ := replica.SerializeManuscript(userId, m.ID, m.LastModified, newRevision, m.Data)
+					_ = replica.EnqueueReplicaPut(tx, fmt.Sprintf("manuscripts/%s/%s/manuscript.json", userId, m.ID), replData, "application/json")
 				}
-			} else {
-				// Enqueue manuscript replica put
-				replData, _ := replica.SerializeManuscript(userId, m.ID, m.LastModified, newRevision, m.Data)
-				_ = replica.EnqueueReplicaPut(tx, fmt.Sprintf("manuscripts/%s/%s/manuscript.json", userId, m.ID), replData, "application/json")
 			}
 		}
 	}
 
 	// 2. Process Chapters Push
-	for _, c := range req.Push.Chapters {
-		var existingLastModified int64
-		var existingDeletedAt sql.NullInt64
-		var existingRevision int
-
-		errGet := tx.QueryRow(`
+	if len(req.Push.Chapters) > 0 {
+		stmtGetCh, errStmt := tx.Prepare(`
 			SELECT last_modified, deleted_at, revision FROM chapters
 			 WHERE user_id = ? AND manuscript_id = ? AND id = ?
-		`, userId, c.ManuscriptID, c.ID).Scan(&existingLastModified, &existingDeletedAt, &existingRevision)
-
-		// Check if active manuscript exists
-		var hasActiveMs int
-		_ = tx.QueryRow("SELECT 1 FROM manuscripts WHERE user_id = ? AND id = ? AND deleted_at IS NULL", userId, c.ManuscriptID).Scan(&hasActiveMs)
-
-		if !c.Deleted && hasActiveMs == 0 {
-			continue // skip orphan chapters
+		`)
+		if errStmt != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": errStmt.Error()})
+			return
 		}
-		if c.Deleted && errGet == sql.ErrNoRows {
-			continue // skip deleting non-existent chapters
-		}
-		if errGet == nil && existingDeletedAt.Valid {
-			continue // skip resurrection attempts on retained tombstones
-		}
+		defer stmtGetCh.Close()
 
-		if errGet == sql.ErrNoRows || c.LastModified > existingLastModified {
-			var delAtVal interface{} = nil
-			if c.Deleted {
-				delAtVal = c.LastModified
+		stmtHasMs, errStmt := tx.Prepare("SELECT 1 FROM manuscripts WHERE user_id = ? AND id = ? AND deleted_at IS NULL")
+		if errStmt != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": errStmt.Error()})
+			return
+		}
+		defer stmtHasMs.Close()
+
+		stmtUpCh, errStmt := tx.Prepare(`
+			INSERT INTO chapters (user_id, manuscript_id, id, title, content, position, last_modified, deleted_at, revision)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+			ON CONFLICT(user_id, manuscript_id, id) DO UPDATE SET
+				title         = excluded.title,
+				content       = excluded.content,
+				position      = excluded.position,
+				last_modified = excluded.last_modified,
+				deleted_at    = excluded.deleted_at,
+				revision      = chapters.revision + 1
+		`)
+		if errStmt != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": errStmt.Error()})
+			return
+		}
+		defer stmtUpCh.Close()
+
+		for _, c := range req.Push.Chapters {
+			var existingLastModified int64
+			var existingDeletedAt sql.NullInt64
+			var existingRevision int
+
+			errGet := stmtGetCh.QueryRow(userId, c.ManuscriptID, c.ID).Scan(&existingLastModified, &existingDeletedAt, &existingRevision)
+
+			// Check if active manuscript exists
+			var hasActiveMs int
+			_ = stmtHasMs.QueryRow(userId, c.ManuscriptID).Scan(&hasActiveMs)
+
+			if !c.Deleted && hasActiveMs == 0 {
+				continue // skip orphan chapters
+			}
+			if c.Deleted && errGet == sql.ErrNoRows {
+				continue // skip deleting non-existent chapters
+			}
+			if errGet == nil && existingDeletedAt.Valid {
+				continue // skip resurrection attempts on retained tombstones
 			}
 
-			_, errUp := tx.Exec(`
-				INSERT INTO chapters (user_id, manuscript_id, id, title, content, position, last_modified, deleted_at, revision)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
-				ON CONFLICT(user_id, manuscript_id, id) DO UPDATE SET
-					title         = excluded.title,
-					content       = excluded.content,
-					position      = excluded.position,
-					last_modified = excluded.last_modified,
-					deleted_at    = excluded.deleted_at,
-					revision      = chapters.revision + 1
-			`, userId, c.ManuscriptID, c.ID, c.Title, c.Content, c.Position, c.LastModified, delAtVal)
-			if errUp != nil {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]string{"error": errUp.Error()})
-				return
-			}
-
-			newRevision := existingRevision + 1
-			operation := "upsert"
-			if c.Deleted {
-				operation = "delete"
-			}
-			_, _ = db.RecordChange(tx, userId, "chapter", &c.ManuscriptID, c.ID, operation, newRevision, c.LastModified)
-
-			if c.Deleted {
-				// Purge chapter collaboration residues
-				_, _ = tx.Exec("DELETE FROM ydocs WHERE name = ?", fmt.Sprintf("%s/%s:%s", url.QueryEscape(userId), c.ManuscriptID, c.ID))
-				_, _ = tx.Exec("DELETE FROM ydocs WHERE name = ?", fmt.Sprintf("%s:%s", c.ManuscriptID, c.ID))
-				_, _ = tx.Exec(`
-					DELETE FROM chapter_pre_collab
-					 WHERE user_id = ? AND manuscript_id = ? AND chapter_id = ?
-				`, userId, c.ManuscriptID, c.ID)
-
-				// Enqueue replica tombstone
-				chTombData := replica.SerializeChapterTombstone(userId, c.ManuscriptID, c.ID, c.LastModified, newRevision)
-				_ = replica.EnqueueReplicaPut(tx, fmt.Sprintf("manuscripts/%s/%s/chapters/%s.html", userId, c.ManuscriptID, c.ID), chTombData, "text/html; charset=utf-8")
-			} else {
-				// Enqueue replica put
-				titleStr := ""
-				if c.Title != nil {
-					titleStr = *c.Title
-				}
-				contentStr := ""
-				if c.Content != nil {
-					contentStr = *c.Content
-				}
-				posInt := 0
-				if c.Position != nil {
-					posInt = *c.Position
+			if errGet == sql.ErrNoRows || c.LastModified > existingLastModified {
+				var delAtVal interface{} = nil
+				if c.Deleted {
+					delAtVal = c.LastModified
 				}
 
-				replData := replica.SerializeChapter(userId, c.ManuscriptID, c.ID, titleStr, posInt, c.LastModified, newRevision, contentStr)
-				_ = replica.EnqueueReplicaPut(tx, fmt.Sprintf("manuscripts/%s/%s/chapters/%s.html", userId, c.ManuscriptID, c.ID), replData, "text/html; charset=utf-8")
-			}
+				_, errUp := stmtUpCh.Exec(userId, c.ManuscriptID, c.ID, c.Title, c.Content, c.Position, c.LastModified, delAtVal)
+				if errUp != nil {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{"error": errUp.Error()})
+					return
+				}
 
-			_, _ = db.TouchManuscriptForChapterChange(tx, userId, c.ManuscriptID, c.LastModified)
+				newRevision := existingRevision + 1
+				operation := "upsert"
+				if c.Deleted {
+					operation = "delete"
+				}
+				_, _ = db.RecordChange(tx, userId, "chapter", &c.ManuscriptID, c.ID, operation, newRevision, c.LastModified)
+
+				if c.Deleted {
+					// Purge chapter collaboration residues
+					_, _ = tx.Exec("DELETE FROM ydocs WHERE name = ?", fmt.Sprintf("%s/%s:%s", url.QueryEscape(userId), c.ManuscriptID, c.ID))
+					_, _ = tx.Exec("DELETE FROM ydocs WHERE name = ?", fmt.Sprintf("%s:%s", c.ManuscriptID, c.ID))
+					_, _ = tx.Exec(`
+						DELETE FROM chapter_pre_collab
+						 WHERE user_id = ? AND manuscript_id = ? AND chapter_id = ?
+					`, userId, c.ManuscriptID, c.ID)
+
+					// Enqueue replica tombstone
+					chTombData := replica.SerializeChapterTombstone(userId, c.ManuscriptID, c.ID, c.LastModified, newRevision)
+					_ = replica.EnqueueReplicaPut(tx, fmt.Sprintf("manuscripts/%s/%s/chapters/%s.html", userId, c.ManuscriptID, c.ID), chTombData, "text/html; charset=utf-8")
+				} else {
+					// Enqueue replica put
+					titleStr := ""
+					if c.Title != nil {
+						titleStr = *c.Title
+					}
+					contentStr := ""
+					if c.Content != nil {
+						contentStr = *c.Content
+					}
+					posInt := 0
+					if c.Position != nil {
+						posInt = *c.Position
+					}
+
+					replData := replica.SerializeChapter(userId, c.ManuscriptID, c.ID, titleStr, posInt, c.LastModified, newRevision, contentStr)
+					_ = replica.EnqueueReplicaPut(tx, fmt.Sprintf("manuscripts/%s/%s/chapters/%s.html", userId, c.ManuscriptID, c.ID), replData, "text/html; charset=utf-8")
+				}
+
+				_, _ = db.TouchManuscriptForChapterChange(tx, userId, c.ManuscriptID, c.LastModified)
+			}
 		}
 	}
 
@@ -359,25 +408,45 @@ func (h *SyncHandler) syncV1(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 4. Process Plugins Push
-	for _, p := range req.Push.Plugins {
-		var existingLastModified int64
-		errGet := tx.QueryRow("SELECT last_modified FROM plugin_states WHERE user_id = ? AND id = ?", userId, p.ID).Scan(&existingLastModified)
-		if errGet == sql.ErrNoRows || p.LastModified > existingLastModified {
-			_, errUp := tx.Exec(`
-				INSERT INTO plugin_states (user_id, id, plugin_id, manuscript_id, enabled, state, last_modified)
-				VALUES (?, ?, ?, ?, ?, ?, ?)
-				ON CONFLICT(user_id, id) DO UPDATE SET
-					plugin_id     = excluded.plugin_id,
-					manuscript_id = excluded.manuscript_id,
-					enabled       = excluded.enabled,
-					state         = excluded.state,
-					last_modified = excluded.last_modified
-			`, userId, p.ID, p.PluginID, p.ManuscriptID, p.Enabled, p.State, p.LastModified)
-			if errUp != nil {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]string{"error": errUp.Error()})
-				return
+	if len(req.Push.Plugins) > 0 {
+		stmtGetPl, errStmt := tx.Prepare("SELECT last_modified FROM plugin_states WHERE user_id = ? AND id = ?")
+		if errStmt != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": errStmt.Error()})
+			return
+		}
+		defer stmtGetPl.Close()
+
+		stmtUpPl, errStmt := tx.Prepare(`
+			INSERT INTO plugin_states (user_id, id, plugin_id, manuscript_id, enabled, state, last_modified)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(user_id, id) DO UPDATE SET
+				plugin_id     = excluded.plugin_id,
+				manuscript_id = excluded.manuscript_id,
+				enabled       = excluded.enabled,
+				state         = excluded.state,
+				last_modified = excluded.last_modified
+		`)
+		if errStmt != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": errStmt.Error()})
+			return
+		}
+		defer stmtUpPl.Close()
+
+		for _, p := range req.Push.Plugins {
+			var existingLastModified int64
+			errGet := stmtGetPl.QueryRow(userId, p.ID).Scan(&existingLastModified)
+			if errGet == sql.ErrNoRows || p.LastModified > existingLastModified {
+				_, errUp := stmtUpPl.Exec(userId, p.ID, p.PluginID, p.ManuscriptID, p.Enabled, p.State, p.LastModified)
+				if errUp != nil {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{"error": errUp.Error()})
+					return
+				}
 			}
 		}
 	}
@@ -390,7 +459,7 @@ func (h *SyncHandler) syncV1(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ---- Pull newer than req.Since ----
-	var manuscriptsOut []ManuscriptSyncOut
+	manuscriptsOut := make([]ManuscriptSyncOut, 0, 16)
 	rowsMs, errMs := h.database.Query("SELECT id, data, last_modified, deleted_at FROM manuscripts WHERE user_id = ? AND last_modified > ?", userId, req.Since)
 	if errMs == nil {
 		defer rowsMs.Close()
@@ -404,7 +473,7 @@ func (h *SyncHandler) syncV1(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var chaptersOut []ChapterSyncOut
+	chaptersOut := make([]ChapterSyncOut, 0, 32)
 	rowsCh, errCh := h.database.Query("SELECT id, manuscript_id, title, content, position, last_modified, deleted_at FROM chapters WHERE user_id = ? AND last_modified > ?", userId, req.Since)
 	if errCh == nil {
 		defer rowsCh.Close()
@@ -438,7 +507,7 @@ func (h *SyncHandler) syncV1(w http.ResponseWriter, r *http.Request) {
 		profileOut = &ProfileSyncIn{Data: profData, LastModified: profLastMod}
 	}
 
-	var pluginsOut []PluginStateSyncOut
+	pluginsOut := make([]PluginStateSyncOut, 0, 16)
 	rowsPl, errPl := h.database.Query("SELECT id, plugin_id, manuscript_id, enabled, state, last_modified FROM plugin_states WHERE user_id = ? AND last_modified > ?", userId, req.Since)
 	if errPl == nil {
 		defer rowsPl.Close()
@@ -706,7 +775,7 @@ func (h *SyncHandler) syncV2(w http.ResponseWriter, r *http.Request) {
 	}
 
 	historyResetRequired := resetReason != ""
-	var results []V2Result
+	results := make([]V2Result, 0, len(req.Changes))
 
 	if historyResetRequired {
 		// Populate all changes as conflicts
@@ -1026,12 +1095,12 @@ func (h *SyncHandler) syncV2(w http.ResponseWriter, r *http.Request) {
 		 LIMIT ?
 	`, userId, pullCursor, pageSize+1)
 
-	var fetchedLogRows []struct {
+	fetchedLogRows := make([]struct {
 		seq          int64
 		entity       string
 		manuscriptID sql.NullString
 		recordID     string
-	}
+	}, 0, pageSize+1)
 
 	if errQuery == nil {
 		defer rows.Close()
@@ -1065,7 +1134,7 @@ func (h *SyncHandler) syncV2(w http.ResponseWriter, r *http.Request) {
 		latestMap[k] = row.seq
 	}
 
-	var changes []interface{}
+	changes := make([]interface{}, 0, len(logRows))
 	// To maintain order, iterate logRows but only add when it's the latest seq
 	seen := make(map[latestKey]bool)
 	for _, row := range logRows {

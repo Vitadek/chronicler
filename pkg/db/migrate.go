@@ -357,6 +357,16 @@ var migrations = []Migration{
 			return err
 		},
 	},
+	{
+		Name: "009_chapters_position_idx",
+		Up: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`
+				CREATE INDEX IF NOT EXISTS idx_chapters_manuscript_pos
+					ON chapters(user_id, manuscript_id, deleted_at, position, last_modified);
+			`)
+			return err
+		},
+	},
 }
 
 type DeletedManuscript struct {
