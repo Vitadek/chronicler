@@ -4,7 +4,7 @@
 # Builds the React app into /src/web, which the Go stage then embeds. Generated
 # web/ output is intentionally not committed; this stage is the release source
 # of truth and must run before `//go:embed web/*` is compiled.
-FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS frontend
+FROM --platform=$BUILDPLATFORM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS frontend
 
 WORKDIR /src/frontend
 
@@ -27,7 +27,7 @@ RUN npm run build
 # the runtime stage bakes in at /app/node_modules -- so these packages are
 # "already shipped" and need no npm at plugin-install time. `npm ci` pins them
 # exactly, same rationale as the frontend stage.
-FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS plugin-toolkit
+FROM --platform=$BUILDPLATFORM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS plugin-toolkit
 
 WORKDIR /src/plugin-toolkit
 COPY plugin-toolkit/package.json plugin-toolkit/package-lock.json ./
@@ -35,7 +35,7 @@ RUN npm ci --ignore-scripts --omit=dev --no-audit --no-fund
 
 
 # --- Go build stage -----------------------------------------------------------
-FROM golang:1.25-alpine@sha256:56961d79ea8129efddcc0b8643fd8a5416b4e6228cfd477e3fd61deb2672c587 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine@sha256:56961d79ea8129efddcc0b8643fd8a5416b4e6228cfd477e3fd61deb2672c587 AS builder
 
 WORKDIR /src
 
@@ -48,10 +48,15 @@ COPY . .
 # tree, so the image always embeds a UI built from this commit's frontend.
 COPY --from=frontend /src/web ./web
 
+ARG TARGETOS TARGETARCH
+
 # CGO_ENABLED=0 gives a static binary and, with `headless`, excludes the
 # webview GUI (gui.go is `//go:build !headless && cgo`). modernc.org/sqlite is
 # pure Go, which is what makes a cgo-free server build possible at all.
-ENV CGO_ENABLED=0
+ENV CGO_ENABLED=0 \
+    GOOS=${TARGETOS:-linux} \
+    GOARCH=${TARGETARCH:-amd64}
+
 RUN go build -mod=vendor -tags headless -trimpath \
       -ldflags="-s -w" -o /out/chronicle-server .
 
